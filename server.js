@@ -93,7 +93,13 @@ app.post("/api/chat", async (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`🚀 Server running at http://localhost:${PORT}`);
-  console.log(`📊 Mutual Fund Chat Interface Ready!`);
-});
+// Export for Vercel serverless
+export default app;
+
+// Only listen when running locally (not on Vercel)
+if (process.env.NODE_ENV !== 'production') {
+  app.listen(PORT, () => {
+    console.log(`🚀 Server running at http://localhost:${PORT}`);
+    console.log(`📊 Mutual Fund Chat Interface Ready!`);
+  });
+}
