@@ -11,16 +11,8 @@ import "dotenv/config";
 // Initialize mathjs with all functions
 const math = create(all);
 
-export const customClient = new OpenAI({
-  baseURL: "https://api.groq.com/openai/v1",
-  apiKey: process.env.GROQ_API_KEY,
-});
-
-// setDefaultOpenAIClient(customClient);
-
 // Create a Gemini model instance using the AI SDK adapter
 const model = aisdk(google("gemini-2.5-flash"));
-// const model = "openai/gpt-oss-120b";
 
 // Tool: Search for mutual funds by name (LOCAL SEARCH - FAST)
 const searchMutualFunds = tool({
@@ -197,7 +189,7 @@ Pass the expression as a string and optionally provide variables as an object.`,
 const generateChart = tool({
   name: "generate_chart",
   description:
-    "Generate visual charts for mutual fund data using QuickChart. Returns a chart URL.",
+    "Generate visual charts for mutual fund data using QuickChart. Returns a short chart URL.",
   parameters: z.object({
     chartType: z
       .string()
@@ -267,19 +259,42 @@ const generateChart = tool({
         },
       };
 
-      // Create QuickChart URL
-      const chartUrl = `https://quickchart.io/chart?backgroundColor=black&c=${encodeURIComponent(
-        JSON.stringify(chartConfig)
-      )}&w=800&h=400`;
+      // Use QuickChart short URL API for cleaner URLs
+      const response = await fetch("https://quickchart.io/chart/create", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          backgroundColor: "black",
+          width: 800,
+          height: 400,
+          chart: chartConfig,
+        }),
+      });
 
-      const chartResponse = {
-        type: "CHART",
-        url: chartUrl,
-        message: "Chart created successfully",
-      };
-
-      // Return with special markers for easy detection
-      return `<<<CHART_START>>>${JSON.stringify(chartResponse)}<<<CHART_END>>>`;
+      const result = await response.json();
+      
+      if (result.success && result.url) {
+        return JSON.stringify({
+          type: "CHART",
+          url: result.url,
+          title: title,
+          message: "Chart created successfully. Use this URL in a markdown link.",
+        });
+      } else {
+        // Fallback to long URL if short URL fails
+        const chartUrl = `https://quickchart.io/chart?backgroundColor=black&c=${encodeURIComponent(
+          JSON.stringify(chartConfig)
+        )}&w=800&h=400`;
+        
+        return JSON.stringify({
+          type: "CHART",
+          url: chartUrl,
+          title: title,
+          message: "Chart created successfully. Use this URL in a markdown link.",
+        });
+      }
     } catch (error) {
       return JSON.stringify({ error: error.message });
     }
@@ -333,7 +348,9 @@ const compareMutualFunds = tool({
 const agent = new Agent({
   name: "Mutual Fund Advisor",
   model: model,
-  instructions: `You are an expert mutual fund advisor and financial analyst AI agent for Indian mutual funds.
+  instructions: 
+  `
+  You are an expert mutual fund advisor and financial analyst AI agent for Indian mutual funds.
 
 ## Your Capabilities:
 1. **Search & Research**: Find mutual funds using search_mutual_funds (LOCAL - fast keyword search), get details with get_mutual_fund_details
@@ -371,33 +388,40 @@ The calculate tool accepts any mathjs expression. Use it for:
 
 You can pass variables: {"principal": 10000, "rate": 12} and use them in expression: "principal * (1 + rate/100)^5"
 
-## Chart Generation:
-CRITICAL INSTRUCTION: When you call the generate_chart tool, it will RETURN a response with special markers that looks like this:
-<<<CHART_START>>>{"type":"CHART","config":{...},"message":"..."}<<<CHART_END>>>
+## Chart Generation (Markdown links):
+When you call the generate_chart tool, it returns JSON like:
+{"type":"CHART","url":"https://quickchart.io/chart/render/abcd1234","title":"...","message":"..."}
 
-You MUST include this EXACT RETURN VALUE (including the markers) in your final response to the user.
+The URL is a SHORT URL that you can easily use in markdown.
 
-DO NOT output the chart tool's INPUT parameters.
-DO output the chart tool's RETURN VALUE exactly as it comes back.
+How to respond:
+1) Parse the tool result JSON
+2) Create a markdown link using the url and title: [Title](url)
+3) Integrate the link naturally in the response text
 
-Example of CORRECT behavior:
-User: "Draw chart"
-You call generate_chart tool → Tool returns: <<<CHART_START>>>{"type":"CHART",...}<<<CHART_END>>>
-Your response to user: "Here is your chart:\n\n<<<CHART_START>>>{"type":"CHART",...}<<<CHART_END>>>"
+Example:
+Tool returns: {"type":"CHART","url":"https://quickchart.io/chart/render/abc123","title":"Fund NAV Trend","message":"..."}
 
-Example of WRONG behavior (DO NOT DO THIS):
-Your response: "Here is your chart:\n\n<<>>\n{\"chartType\":\"line\",\"labels\":[...]}\n<<>>"
+Your response should include:
+"Here is the NAV trend chart:
+[Fund NAV Trend](https://quickchart.io/chart/render/abc123)
 
-The system will automatically convert the tool's return value into a clickable chart link for the user.
+Performance Summary..."
+
+Guidelines:
+- Use the exact URL from the tool result (it's short and clean)
+- Use the title or a descriptive text as the link text
+- Keep everything in markdown format
 
 ## Response Guidelines:
 - Fetch real data before calculations
 - Show your calculation expressions for transparency
 - Round results appropriately (2 decimals for percentages, 0 for currency)
-- When generating charts, output ONLY the chart JSON - no explanatory text
-- For non-chart responses, provide clear explanations
+- For charts: use the chart URL from the tool result to craft a descriptive markdown link in-line
+- Provide clear explanations
 - Always clarify this is informational, not financial advice
-- Recommend consulting a SEBI-registered advisor for decisions`,
+- Recommend consulting a SEBI-registered advisor for decisions
+  `,
   tools: [
     searchMutualFunds,
     getMutualFundDetails,

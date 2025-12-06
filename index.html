@@ -339,6 +339,27 @@
         code {
             font-family: 'Courier New', monospace;
         }
+
+        /* Hyperlink styling in messages */
+        .message-content a {
+            color: #0084ff;
+            text-decoration: underline;
+            font-weight: 500;
+            transition: color 0.2s;
+        }
+
+        .message-content a:hover {
+            color: #0073e6;
+            text-decoration: underline;
+        }
+
+        body.light-mode .message-content a {
+            color: #0066cc;
+        }
+
+        body.light-mode .message-content a:hover {
+            color: #0052a3;
+        }
     </style>
 </head>
 <body>
@@ -627,48 +648,15 @@
         }
 
         function processMessageContent(content) {
-            // Check if content contains a chart configuration
-            try {
-                const parsed = JSON.parse(content);
-                if (parsed.type === 'CHART' && parsed.config) {
-                    return renderChart(parsed.config);
-                }
-            } catch (e) {
-                // Try to find JSON in the content
-                const jsonMatch = content.match(/\{[\s\S]*"type"\s*:\s*"CHART"[\s\S]*\}/);
-                if (jsonMatch) {
-                    try {
-                        const chartData = JSON.parse(jsonMatch[0]);
-                        if (chartData.type === 'CHART' && chartData.config) {
-                            return renderChart(chartData.config);
-                        }
-                    } catch (parseError) {
-                        // Continue with regular processing
-                    }
-                }
-            }
-
-            // Regular text formatting
+            // Regular text formatting with markdown support
             return content
                 .replace(/\n/g, '<br>')
+                // Markdown links: [text](url)
+                .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>')
+                // Bold: **text**
                 .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                // Inline code: `code`
                 .replace(/`(.*?)`/g, '<code>$1</code>');
-        }
-
-        function renderChartLink(chartUrl) {
-            // Return clickable link to QuickChart
-            return `<div style="margin: 12px 0;">
-                <a href="${chartUrl}" target="_blank" style="
-                    display: inline-block;
-                    padding: 10px 20px;
-                    background: #0084ff;
-                    color: #fff;
-                    text-decoration: none;
-                    border-radius: 6px;
-                    font-size: 14px;
-                    font-weight: 500;
-                ">📊 Click Here to View Chart</a>
-            </div>`;
         }
 
         sendButton.addEventListener('click', sendMessage);

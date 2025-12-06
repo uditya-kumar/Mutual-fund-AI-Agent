@@ -69,44 +69,9 @@ app.post("/api/chat", async (req, res) => {
     // Restore console.log
     console.log = originalLog;
 
-    // Check if the response contains chart JSON with special markers
-    let finalContent = result.finalOutput.trim();
-    let chartDetected = false;
-
-    // Look for special chart markers
-    const chartMarkerMatch = finalContent.match(/<<<CHART_START>>>([\s\S]*?)<<<CHART_END>>>/);
-    
-    if (chartMarkerMatch) {
-      try {
-        const chartData = JSON.parse(chartMarkerMatch[1]);
-        if (chartData.type === 'CHART' && chartData.url) {
-          // Extract text before and after the chart markers
-          const beforeChart = finalContent.substring(0, chartMarkerMatch.index).trim();
-          const afterChart = finalContent.substring(chartMarkerMatch.index + chartMarkerMatch[0].length).trim();
-          
-          // Send text message first if there's content before chart
-          if (beforeChart) {
-            res.write(`data: ${JSON.stringify({ type: "message", content: beforeChart })}\n\n`);
-          }
-          
-          // Send chart URL
-          res.write(`data: ${JSON.stringify({ type: "chart", url: chartData.url })}\n\n`);
-          chartDetected = true;
-          
-          // Send text after chart if any
-          if (afterChart) {
-            res.write(`data: ${JSON.stringify({ type: "message", content: afterChart })}\n\n`);
-          }
-        }
-      } catch (parseError) {
-        console.error('Chart parse error:', parseError);
-      }
-    }
-
-    if (!chartDetected) {
-      // Regular message
-      res.write(`data: ${JSON.stringify({ type: "message", content: finalContent })}\n\n`);
-    }
+    // Send the message (markdown passes through as-is)
+    const finalContent = result.finalOutput.trim();
+    res.write(`data: ${JSON.stringify({ type: "message", content: finalContent })}\n\n`);
 
     res.write(`data: ${JSON.stringify({ type: "done" })}\n\n`);
     res.end();
