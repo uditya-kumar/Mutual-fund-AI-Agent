@@ -14,6 +14,56 @@ const math = create(all);
 // Create a Gemini model instance using the AI SDK adapter
 const model = aisdk(google("gemini-2.5-flash"));
 
+// Input Guardrail Agent - Checks if query is related to mutual funds/investing
+const inputGuardAgent = new Agent({
+  name: "Mutual Fund Query Validator",
+  model: model,
+  instructions: `You are a query validator. Your ONLY job is to determine if the user's query is related to:
+- Mutual funds (searching, analyzing, comparing, NAV, returns, SIP, etc.)
+- Investing and finance (stocks, bonds, portfolio, returns, CAGR, etc.)
+- Financial calculations (SIP calculator, returns, projections, etc.)
+- Indian financial markets and instruments
+
+Respond with a JSON object:
+{
+  "isValidQuery": true/false,
+  "reason": "Brief explanation"
+}
+
+Examples of VALID queries:
+- "Search for SBI Blue Chip fund" → {"isValidQuery": true, "reason": "Mutual fund search request"}
+- "What's the CAGR of scheme 119551?" → {"isValidQuery": true, "reason": "Fund performance query"}
+- "Calculate SIP of 5000 for 10 years" → {"isValidQuery": true, "reason": "SIP calculation request"}
+- "Compare HDFC and ICICI funds" → {"isValidQuery": true, "reason": "Fund comparison request"}
+- "Show NAV chart" → {"isValidQuery": true, "reason": "Chart visualization request"}
+- "What is expense ratio?" → {"isValidQuery": true, "reason": "Investment concept question"}
+
+Examples of INVALID queries:
+- "Write me a poem" → {"isValidQuery": false, "reason": "Not related to mutual funds or investing"}
+- "What's the weather today?" → {"isValidQuery": false, "reason": "Weather query, not finance related"}
+- "Tell me a joke" → {"isValidQuery": false, "reason": "Entertainment request, not investment related"}
+- "How to cook pasta?" → {"isValidQuery": false, "reason": "Cooking query, not finance related"}
+- "Who is the president?" → {"isValidQuery": false, "reason": "General knowledge, not investment related"}
+
+Be strict but reasonable. Finance and investment education questions are allowed.
+Always respond with valid JSON only.`,
+  outputType: z.object({
+    isValidQuery: z.boolean(),
+    reason: z.string(),
+  }),
+});
+
+const inputGuardrail = {
+  name: "MutualFundQueryGuardrail",
+  execute: async ({ input }) => {
+    const result = await run(inputGuardAgent, input);
+    return {
+      outputInfo: result.finalOutput,
+      tripwireTriggered: !result.finalOutput.isValidQuery,
+    };
+  },
+};
+
 // Tool: Search for mutual funds by name (LOCAL SEARCH - FAST)
 const searchMutualFunds = tool({
   name: "search_mutual_funds",
@@ -274,25 +324,27 @@ const generateChart = tool({
       });
 
       const result = await response.json();
-      
+
       if (result.success && result.url) {
         return JSON.stringify({
           type: "CHART",
           url: result.url,
           title: title,
-          message: "Chart created successfully. Use this URL in a markdown link.",
+          message:
+            "Chart created successfully. Use this URL in a markdown link.",
         });
       } else {
         // Fallback to long URL if short URL fails
         const chartUrl = `https://quickchart.io/chart?backgroundColor=black&c=${encodeURIComponent(
           JSON.stringify(chartConfig)
         )}&w=800&h=400`;
-        
+
         return JSON.stringify({
           type: "CHART",
           url: chartUrl,
           title: title,
-          message: "Chart created successfully. Use this URL in a markdown link.",
+          message:
+            "Chart created successfully. Use this URL in a markdown link.",
         });
       }
     } catch (error) {
@@ -348,8 +400,7 @@ const compareMutualFunds = tool({
 const agent = new Agent({
   name: "Mutual Fund Advisor",
   model: model,
-  instructions: 
-  `
+  instructions: `
   You are an expert mutual fund advisor and financial analyst AI agent for Indian mutual funds.
 
 ## Your Capabilities:
@@ -430,6 +481,7 @@ Guidelines:
     generateChart,
     compareMutualFunds,
   ],
+  inputGuardrails: [inputGuardrail],
 });
 
 // Main function to run the agent

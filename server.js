@@ -1,7 +1,7 @@
 import express from "express";
 import { agent } from "./agent.js";
 import mutualFunds from "./mutualFund.js";
-import { run } from "@openai/agents";
+import { run, InputGuardrailTripwireTriggered } from "@openai/agents";
 import path from "path";
 import { fileURLToPath } from "url";
 
@@ -77,7 +77,18 @@ app.post("/api/chat", async (req, res) => {
     res.end();
   } catch (error) {
     console.error("Error:", error);
-    res.write(`data: ${JSON.stringify({ type: "error", error: error.message })}\n\n`);
+    
+    // Check if it's a guardrail tripwire error
+    if (error instanceof InputGuardrailTripwireTriggered) {
+      const reason = error.result?.outputInfo?.reason || "This query is not related to mutual funds or investing.";
+      res.write(`data: ${JSON.stringify({ 
+        type: "message", 
+        content: `🚫 **Query Rejected**\n\n${reason}\n\nI'm a mutual fund advisor and can only help with:\n- Searching and analyzing mutual funds\n- Calculating returns, SIP, and CAGR\n- Comparing funds and viewing charts\n- Investment-related questions\n\nPlease ask something related to mutual funds or investing!` 
+      })}\n\n`);
+      res.write(`data: ${JSON.stringify({ type: "done" })}\n\n`);
+    } else {
+      res.write(`data: ${JSON.stringify({ type: "error", error: error.message })}\n\n`);
+    }
     res.end();
   }
 });
