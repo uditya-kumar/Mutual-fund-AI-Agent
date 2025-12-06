@@ -1,0 +1,23 @@
+{
+  "name": "financial-ai-agent",
+  "version": "1.0.0",
+  "description": "Financial ai agent with Indian stock and mutual fund data",
+  "license": "ISC",
+  "author": "Uditya",
+  "type": "module",
+  "main": "agent.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "dev": "node agent.js",
+    "server": "node server.js --watch"
+  },
+  "dependencies": {
+    "@ai-sdk/google": "^2.0.44",
+    "@openai/agents": "^0.3.3",
+    "@openai/agents-extensions": "^0.3.3",
+    "dotenv": "^17.2.3",
+    "express": "^4.22.1",
+    "mathjs": "^15.1.0",
+    "zod": "^3.25.76"
+  }
+}
