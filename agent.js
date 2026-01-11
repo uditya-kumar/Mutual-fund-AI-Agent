@@ -1,12 +1,14 @@
 import { google } from "@ai-sdk/google";
-import { Agent, run, setDefaultOpenAIClient } from "@openai/agents";
+import { Agent, run } from "@openai/agents";
 import { aisdk } from "@openai/agents-extensions";
 import { tool } from "@openai/agents";
 import { z } from "zod";
-import OpenAI from "openai";
 import { create, all } from "mathjs";
-import mutualFunds from "./mutualFund.js";
 import "dotenv/config";
+
+// Import the existing API services
+import { upstoxService } from "./api/services/upstox.service.js";
+import { buildFundUrl } from "./api/routes/mutualFund.routes.js";
 
 // Initialize mathjs with all functions
 const math = create(all);
@@ -64,55 +66,168 @@ const inputGuardrail = {
   },
 };
 
-// Tool: Search for mutual funds by name (LOCAL SEARCH - FAST)
+// Helper function to convert name to slug format
+function nameToSlug(name) {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, '') // Remove special characters
+    .replace(/\s+/g, '-')          // Replace spaces with hyphens
+    .replace(/-+/g, '-')           // Replace multiple hyphens with single
+    .replace(/^-|-$/g, '');        // Remove leading/trailing hyphens
+}
+
+// Helper function to build fund slug from schemeName and schemeCode
+function buildFundSlugFromSearch(schemeName, schemeCode) {
+  if (!schemeName || !schemeCode) return null;
+  const slug = nameToSlug(schemeName);
+  return `${slug}-${schemeCode}`;
+}
+
+// Helper function to extract fund slug from search result
+function extractFundSlug(item) {
+  // New format from /api/search-funds: { schemeCode, schemeName, ... }
+  if (item.schemeName && item.schemeCode) {
+    return buildFundSlugFromSearch(item.schemeName, item.schemeCode);
+  }
+  
+  // Check if slug is directly available
+  if (item.slug) return item.slug;
+  
+  // Check in attributes (API format)
+  if (item.attributes) {
+    const attrs = item.attributes;
+    if (attrs.slug) return attrs.slug;
+    if (attrs.name && attrs.instrumentKey) {
+      return buildFundSlugFromSearch(attrs.name, attrs.instrumentKey);
+    }
+  }
+  
+  // Fallback: construct from name and asset_key/id
+  const name = item.name || item.display_name || '';
+  const id = item.asset_key || item.id || item.instrumentKey || '';
+  if (name && id) {
+    return buildFundSlugFromSearch(name, id);
+  }
+  
+  return null;
+}
+
+// Helper function to extract fund ID (schemeCode) from search result
+function extractFundId(item) {
+  // New format from /api/search-funds
+  if (item.schemeCode) return item.schemeCode;
+  
+  if (item.asset_key) return item.asset_key;
+  if (item.id) return item.id;
+  if (item.attributes?.instrumentKey) return item.attributes.instrumentKey;
+  if (item.instrumentKey) return item.instrumentKey;
+  return null;
+}
+
+// Helper function to extract fund name (schemeName) from search result
+function extractFundName(item) {
+  // New format from /api/search-funds
+  if (item.schemeName) return item.schemeName;
+  
+  if (item.name) return item.name;
+  if (item.display_name) return item.display_name;
+  if (item.attributes?.name) return item.attributes.name;
+  if (item.attributes?.shortName) return item.attributes.shortName;
+  return 'Unknown Fund';
+}
+
+// Helper function to check if item is a mutual fund
+function isMutualFund(item) {
+  // New format check
+  if (item.segment === "MF") return true;
+  
+  if (item.segment === "MUTUAL_FUND") return true;
+  if (item.product_type === "MUTUAL_FUND") return true;
+  if (item.type === "MUTUAL_FUND") return true;
+  if (item.attributes?.segment === "MF") return true;
+  if (item.attributes?.exchange === "MF") return true;
+  return false;
+}
+
+// Tool: Search for mutual funds using upstoxService
 const searchMutualFunds = tool({
   name: "search_mutual_funds",
   description:
-    "Search for mutual funds by name or keyword using local database. Returns matching funds with scheme codes. If multiple matches found, user should be asked to choose. If single match, proceed automatically. If no match, inform user.",
+    "Search for mutual funds by name or keyword using the Upstox API. Returns matching funds with fund IDs and details.",
   parameters: z.object({
     query: z
       .string()
       .describe("The search term to find mutual funds (name or keyword)"),
   }),
   async execute({ query }) {
-    console.log("🔨Calling Search tool");
+    console.log("🔨 Calling Search tool");
     try {
-      const searchTerm = query.toLowerCase().trim();
+      const data = await upstoxService.search({ query });
+      
+      // Get results from data.data.searchList
+      // Raw API format: { type: "SCRIP", attributes: { instrumentKey, name, segment, ... } }
+      const searchList = data?.data?.searchList || [];
 
-      // Search in local mutualFunds data
-      const matches = mutualFunds.filter((fund) =>
-        fund.schemeName.toLowerCase().includes(searchTerm)
-      );
-
-      if (matches.length === 0) {
+      if (searchList.length === 0) {
         return JSON.stringify({
           status: "not_found",
-          message: `No mutual funds found matching "${query}". Please try a different keyword or fund name.`,
+          message: `No mutual funds found matching "${query}". Please try a different keyword.`,
           matchCount: 0,
         });
       }
 
-      if (matches.length === 1) {
+      // Transform raw API results to normalized format
+      const normalizedResults = searchList
+        .filter(item => item.attributes) // Ensure attributes exist
+        .map(item => {
+          const attrs = item.attributes;
+          return {
+            schemeCode: attrs.instrumentKey || attrs.isin || '',
+            schemeName: attrs.name || attrs.shortName || attrs.tradingSymbol || '',
+            tradingSymbol: attrs.tradingSymbol || '',
+            segment: attrs.segment || '',
+            exchange: attrs.exchange || '',
+          };
+        })
+        .filter(fund => fund.schemeName); // Filter out items without a name
+
+      // Filter only mutual fund results (segment === "MF")
+      const mutualFunds = normalizedResults.filter(item => item.segment === "MF");
+
+      if (mutualFunds.length === 0) {
+        return JSON.stringify({
+          status: "not_found",
+          message: `No mutual funds found matching "${query}". Please try a different keyword.`,
+          matchCount: 0,
+        });
+      }
+
+      if (mutualFunds.length === 1) {
+        const fund = mutualFunds[0];
+        const fundId = fund.schemeCode;
+        const fundSlug = buildFundSlugFromSearch(fund.schemeName, fund.schemeCode);
+        
         return JSON.stringify({
           status: "single_match",
           message: `Found exact match for "${query}"`,
           matchCount: 1,
           fund: {
-            schemeCode: matches[0].schemeCode,
-            schemeName: matches[0].schemeName,
+            fundId: fundId,
+            fundName: fund.schemeName,
+            fundSlug: fundSlug,
           },
         });
       }
 
-      // Multiple matches - return top 15 for user selection
       return JSON.stringify({
         status: "multiple_matches",
-        message: `Found ${matches.length} mutual funds matching "${query}". Here are the top 15:`,
-        matchCount: matches.length,
-        funds: matches.slice(0, 15).map((fund, index) => ({
+        message: `Found ${mutualFunds.length} mutual funds matching "${query}". Here are the top 15:`,
+        matchCount: mutualFunds.length,
+        funds: mutualFunds.slice(0, 15).map((fund, index) => ({
           index: index + 1,
-          schemeCode: fund.schemeCode,
-          schemeName: fund.schemeName,
+          fundId: fund.schemeCode,
+          fundName: fund.schemeName,
+          fundSlug: buildFundSlugFromSearch(fund.schemeName, fund.schemeCode),
         })),
       });
     } catch (error) {
@@ -121,60 +236,97 @@ const searchMutualFunds = tool({
   },
 });
 
-// Tool: Get mutual fund details and NAV history
+// Tool: Get mutual fund details using upstoxService
 const getMutualFundDetails = tool({
   name: "get_mutual_fund_details",
   description:
-    "Get detailed information about a specific mutual fund including current NAV and historical data. Use scheme code obtained from search.",
+    "Get detailed information about a specific mutual fund including current NAV, returns, and fund details. Use the fundSlug from search results (e.g., 'parag-parikh-flexi-cap-direct-growth-100060').",
   parameters: z.object({
-    schemeCode: z.string().describe("The scheme code of the mutual fund"),
+    fundSlug: z.string().describe("The fund slug (e.g., 'parag-parikh-flexi-cap-direct-growth-100060'). This should be obtained from search_mutual_funds results."),
   }),
-  async execute({ schemeCode }) {
+  async execute({ fundSlug }) {
     console.log("🔨 Calling Get Mutual Fund Details tool");
     try {
-      const response = await fetch(`https://api.mfapi.in/mf/${schemeCode}`);
-      const data = await response.json();
-      return JSON.stringify({
-        meta: data.meta,
-        currentNav: data.data?.[0],
-        recentNavHistory: data.data?.slice(0, 30),
-      });
+      // Clean up the slug if needed
+      const cleanSlug = fundSlug.trim().toLowerCase().replace(/\s+/g, '-');
+      const fundUrl = buildFundUrl(cleanSlug);
+      console.log(`Fetching fund data from: ${fundUrl}`);
+      
+      const data = await upstoxService.getMutualFundData(fundUrl);
+      
+      if (!data || Object.keys(data).length === 0) {
+        return JSON.stringify({
+          error: "No data found for this fund",
+          suggestion: "Please verify the fund slug is correct. Try searching for the fund first using search_mutual_funds.",
+          attemptedSlug: cleanSlug
+        });
+      }
+      
+      return JSON.stringify(data);
     } catch (error) {
-      return JSON.stringify({ error: error.message });
+      return JSON.stringify({ 
+        error: error.message,
+        suggestion: "The fund slug might be incorrect. Try searching for the fund first using search_mutual_funds to get the correct slug.",
+        attemptedSlug: fundSlug
+      });
     }
   },
 });
 
-// Tool: Get NAV history for a date range
+// Tool: Get NAV history using upstoxService
 const getNavHistory = tool({
   name: "get_nav_history",
   description:
-    "Get NAV history for a mutual fund. Returns historical NAV data.",
+    "Get NAV history for a mutual fund. Returns historical NAV data with fund performance.",
   parameters: z.object({
-    schemeCode: z.string().describe("The scheme code of the mutual fund"),
-    limit: z
+    fundId: z.string().describe("The fund ID (e.g., '100060')"),
+    navPeriod: z
+      .string()
+      .optional()
+      .describe("Period for NAV history: '1M', '3M', '6M', '1Y', '3Y', '5Y' (default: '5Y')"),
+    investedAmount: z
       .number()
       .optional()
-      .describe("Number of historical records to fetch (default 365)"),
+      .describe("Investment amount for calculation (default: 1000)"),
   }),
-  async execute({ schemeCode, limit = 365 }) {
+  async execute({ fundId, navPeriod, investedAmount }) {
     console.log("🔨 Calling Get NAV History tool");
     try {
-      console.log("🔨 Fetching data");
-      const response = await fetch(`https://api.mfapi.in/mf/${schemeCode}`);
-      console.log("🔨 Got the data!!");
-      const data = await response.json();
-      return JSON.stringify({
-        meta: data.meta,
-        navHistory: data.data?.slice(0, limit),
+      const data = await upstoxService.getNavHistory(fundId, {
+        navPeriod,
+        investedAmount,
       });
+      return JSON.stringify(data);
     } catch (error) {
       return JSON.stringify({ error: error.message });
     }
   },
 });
 
-// 🔥 NEW: Single powerful math expression evaluator
+// Tool: Get category returns comparison using upstoxService
+const getCategoryReturns = tool({
+  name: "get_category_returns",
+  description:
+    "Get category returns comparison for a mutual fund. Compare the fund's performance against its category average.",
+  parameters: z.object({
+    fundId: z.string().describe("The fund ID (e.g., '100060')"),
+    navPeriod: z
+      .string()
+      .optional()
+      .describe("Period for comparison: '1M', '3M', '6M', '1Y', '3Y', '5Y' (default: '5Y')"),
+  }),
+  async execute({ fundId, navPeriod }) {
+    console.log("🔨 Calling Get Category Returns tool");
+    try {
+      const data = await upstoxService.getCategoryReturns(fundId, { navPeriod });
+      return JSON.stringify(data);
+    } catch (error) {
+      return JSON.stringify({ error: error.message });
+    }
+  },
+});
+
+// Tool: Calculate mathematical expressions
 const calculateExpression = tool({
   name: "calculate",
   description: `Evaluate any mathematical expression using mathjs. Supports:
@@ -190,26 +342,18 @@ Pass the expression as a string and optionally provide variables as an object.`,
   parameters: z.object({
     expression: z
       .string()
-      .describe(
-        "Mathematical expression to evaluate (e.g., '((150/100)^(1/5) - 1) * 100' for CAGR)"
-      ),
+      .describe("Mathematical expression to evaluate"),
     variables: z
       .record(z.union([z.number(), z.array(z.number())]))
       .optional()
-      .describe(
-        "Optional variables object, e.g., {principal: 10000, rate: 12, years: 5}"
-      ),
+      .describe("Optional variables object, e.g., {principal: 10000, rate: 12, years: 5}"),
   }),
   async execute({ expression, variables = {} }) {
     console.log("🔨 Calling Calculate Expression tool");
     try {
-      // Create a scope with the provided variables
       const scope = { ...variables };
-
-      // Evaluate the expression
       const result = math.evaluate(expression, scope);
 
-      // Format the result
       let formattedResult;
       if (typeof result === "number") {
         formattedResult = math.round(result, 6);
@@ -243,13 +387,11 @@ const generateChart = tool({
   parameters: z.object({
     chartType: z
       .string()
-      .describe(
-        "Type of chart to generate. Allowed values: line, bar, pie, doughnut, radar"
-      ),
+      .describe("Type of chart: line, bar, pie, doughnut, radar"),
     title: z.string().describe("Chart title"),
     labels: z
       .array(z.string())
-      .describe("Labels for the data points (e.g., dates, categories)"),
+      .describe("Labels for the data points"),
     datasets: z
       .array(
         z.object({
@@ -278,74 +420,32 @@ const generateChart = tool({
         options: {
           responsive: true,
           plugins: {
-            title: {
-              display: true,
-              text: title,
-              font: { size: 16 },
-              color: "#e8e8e8",
-            },
-            legend: {
-              display: true,
-              position: "bottom",
-              labels: {
-                color: "#e8e8e8",
-              },
-            },
+            title: { display: true, text: title, font: { size: 16 }, color: "#e8e8e8" },
+            legend: { display: true, position: "bottom", labels: { color: "#e8e8e8" } },
           },
           scales:
             chartType === "line" || chartType === "bar"
               ? {
-                  y: {
-                    beginAtZero: false,
-                    ticks: { color: "#888" },
-                    grid: { color: "#2a2a2a" },
-                  },
-                  x: {
-                    ticks: { color: "#888" },
-                    grid: { color: "#2a2a2a" },
-                  },
+                  y: { beginAtZero: false, ticks: { color: "#888" }, grid: { color: "#2a2a2a" } },
+                  x: { ticks: { color: "#888" }, grid: { color: "#2a2a2a" } },
                 }
               : undefined,
         },
       };
 
-      // Use QuickChart short URL API for cleaner URLs
       const response = await fetch("https://quickchart.io/chart/create", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          backgroundColor: "black",
-          width: 800,
-          height: 400,
-          chart: chartConfig,
-        }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ backgroundColor: "black", width: 800, height: 400, chart: chartConfig }),
       });
 
       const result = await response.json();
 
       if (result.success && result.url) {
-        return JSON.stringify({
-          type: "CHART",
-          url: result.url,
-          title: title,
-          message:
-            "Chart created successfully. Use this URL in a markdown link.",
-        });
+        return JSON.stringify({ type: "CHART", url: result.url, title: title });
       } else {
-        // Fallback to long URL if short URL fails
-        const chartUrl = `https://quickchart.io/chart?backgroundColor=black&c=${encodeURIComponent(
-          JSON.stringify(chartConfig)
-        )}&w=800&h=400`;
-
-        return JSON.stringify({
-          type: "CHART",
-          url: chartUrl,
-          title: title,
-          message:
-            "Chart created successfully. Use this URL in a markdown link.",
-        });
+        const chartUrl = `https://quickchart.io/chart?backgroundColor=black&c=${encodeURIComponent(JSON.stringify(chartConfig))}&w=800&h=400`;
+        return JSON.stringify({ type: "CHART", url: chartUrl, title: title });
       }
     } catch (error) {
       return JSON.stringify({ error: error.message });
@@ -353,39 +453,34 @@ const generateChart = tool({
   },
 });
 
-// Tool: Compare multiple mutual funds
+// Tool: Compare multiple mutual funds using upstoxService
 const compareMutualFunds = tool({
   name: "compare_mutual_funds",
   description:
-    "Compare multiple mutual funds based on their performance metrics. Returns NAV data for comparison.",
+    "Compare multiple mutual funds based on their performance metrics.",
   parameters: z.object({
-    schemeCodes: z
+    fundIds: z
       .array(z.string())
-      .describe("Array of scheme codes to compare"),
+      .describe("Array of fund IDs to compare (e.g., ['100060', '119551'])"),
   }),
-  async execute({ schemeCodes }) {
+  async execute({ fundIds }) {
     console.log("🔨 Calling Compare Mutual Funds tool");
     try {
       const comparisons = [];
 
-      for (const code of schemeCodes) {
-        const response = await fetch(`https://api.mfapi.in/mf/${code}`);
-        const data = await response.json();
-
-        if (data.data && data.data.length > 0) {
-          const navHistory = data.data.slice(0, 365);
-          const navValues = navHistory.map((d) => parseFloat(d.nav));
-
+      for (const fundId of fundIds) {
+        try {
+          const data = await upstoxService.getCategoryReturns(fundId, { navPeriod: "5Y" });
           comparisons.push({
-            schemeName: data.meta?.scheme_name,
-            schemeCode: code,
-            category: data.meta?.scheme_category,
-            currentNav: navValues[0],
-            nav1WeekAgo: navValues[7] || null,
-            nav1MonthAgo: navValues[30] || null,
-            nav1YearAgo: navValues[navValues.length - 1] || null,
-            navValues: navValues.slice(0, 30), // Last 30 NAVs for calculations
+            fundId: fundId,
+            fundName: data.data?.fundName || `Fund ${fundId}`,
+            category: data.data?.category,
+            returns: data.data?.returns,
+            categoryAvg: data.data?.categoryAverage,
+            data: data.data,
           });
+        } catch (err) {
+          comparisons.push({ fundId: fundId, error: err.message });
         }
       }
 
@@ -401,83 +496,55 @@ const agent = new Agent({
   name: "Mutual Fund Advisor",
   model: model,
   instructions: `
-  You are an expert mutual fund advisor and financial analyst AI agent for Indian mutual funds.
+You are an expert mutual fund advisor and financial analyst AI agent for Indian mutual funds.
 
 ## Your Capabilities:
-1. **Search & Research**: Find mutual funds using search_mutual_funds (LOCAL - fast keyword search), get details with get_mutual_fund_details
-2. **Historical Data**: Fetch NAV history using get_nav_history
+1. **Search & Research**: Find mutual funds using search_mutual_funds, get details with get_mutual_fund_details
+2. **Historical Data**: Fetch NAV history using get_nav_history, category performance with get_category_returns
 3. **Calculations**: Use the calculate tool with mathjs expressions for ANY mathematical computation
 4. **Visualizations**: Generate charts with generate_chart
 5. **Comparisons**: Compare funds using compare_mutual_funds
 
+## IMPORTANT: How to Get Fund Details
+1. **First search** for the fund using search_mutual_funds with the fund name
+2. The search will return fundSlug (e.g., "parag-parikh-flexi-cap-direct-growth-100060")
+3. **Then use get_mutual_fund_details** with the fundSlug to get complete fund information
+4. For NAV history and category returns, use the fundId (the numeric part, e.g., "100060")
+
 ## Search Tool Behavior:
-- search_mutual_funds returns status field: "single_match", "multiple_matches", or "not_found"
-- If single_match: Automatically use the schemeCode for next steps
-- If multiple_matches: Present the list to user and ask them to choose by name or number
-- If not_found: Inform user and suggest trying different keywords
+- search_mutual_funds returns status: "single_match", "multiple_matches", or "not_found"
+- If single_match: Use the fundSlug for get_mutual_fund_details, fundId for NAV/category APIs
+- If multiple_matches: Present the list to user and ask them to choose
+- If not_found: Inform user and suggest different keywords
+
+## Using Fund IDs vs Fund Slugs:
+- **fundSlug** (e.g., "parag-parikh-flexi-cap-direct-growth-100060"): Use for get_mutual_fund_details
+- **fundId** (e.g., "100060"): Use for get_nav_history, get_category_returns, compare_mutual_funds
 
 ## Using the Calculate Tool:
-The calculate tool accepts any mathjs expression. Use it for:
+**CAGR:** \`((finalNav / initialNav) ^ (1 / years) - 1) * 100\`
+**Absolute Returns:** \`((finalNav - initialNav) / initialNav) * 100\`
+**SIP Future Value:** \`P * (((1 + r)^n - 1) / r) * (1 + r)\` where r = annualRate/1200, n = years*12
 
-**CAGR (Compound Annual Growth Rate):**
-\`((finalNav / initialNav) ^ (1 / years) - 1) * 100\`
-
-**Absolute Returns:**
-\`((finalNav - initialNav) / initialNav) * 100\`
-
-**SIP Future Value:**
-\`P * (((1 + r)^n - 1) / r) * (1 + r)\` where r = annualRate/1200, n = years*12
-
-**Required SIP for Target:**
-\`targetAmount / ((((1 + r)^n - 1) / r) * (1 + r))\`
-
-**Volatility (Standard Deviation):**
-\`std([array of daily returns]) * sqrt(252) * 100\` for annualized
-
-**Statistics on NAV array:**
-\`mean([nav1, nav2, ...])\`, \`std([...])\`, \`min([...])\`, \`max([...])\`
-
-You can pass variables: {"principal": 10000, "rate": 12} and use them in expression: "principal * (1 + rate/100)^5"
-
-## Chart Generation (Markdown links):
-When you call the generate_chart tool, it returns JSON like:
-{"type":"CHART","url":"https://quickchart.io/chart/render/abcd1234","title":"...","message":"..."}
-
-The URL is a SHORT URL that you can easily use in markdown.
-
-How to respond:
-1) Parse the tool result JSON
-2) Create a markdown link using the url and title: [Title](url)
-3) Integrate the link naturally in the response text
-
-Example:
-Tool returns: {"type":"CHART","url":"https://quickchart.io/chart/render/abc123","title":"Fund NAV Trend","message":"..."}
-
-Your response should include:
-"Here is the NAV trend chart:
-[Fund NAV Trend](https://quickchart.io/chart/render/abc123)
-
-Performance Summary..."
-
-Guidelines:
-- Use the exact URL from the tool result (it's short and clean)
-- Use the title or a descriptive text as the link text
-- Keep everything in markdown format
+## Chart Generation:
+When generate_chart returns: {"type":"CHART","url":"...","title":"..."}
+Use the URL in a markdown link: [Title](url)
 
 ## Response Guidelines:
+- Always search for a fund first before trying to get its details
 - Fetch real data before calculations
-- Show your calculation expressions for transparency
-- Round results appropriately (2 decimals for percentages, 0 for currency)
-- For charts: use the chart URL from the tool result to craft a descriptive markdown link in-line
+- Show calculation expressions for transparency
+- Round appropriately (2 decimals for %, 0 for currency)
 - Provide clear explanations
-- Always clarify this is informational, not financial advice
-- Recommend consulting a SEBI-registered advisor for decisions
+- Clarify this is informational, not financial advice
+- Recommend consulting a SEBI-registered advisor
   `,
   tools: [
     searchMutualFunds,
     getMutualFundDetails,
     getNavHistory,
-    calculateExpression, // Single powerful math tool!
+    getCategoryReturns,
+    calculateExpression,
     generateChart,
     compareMutualFunds,
   ],
@@ -496,11 +563,10 @@ async function main() {
   console.log("━".repeat(50));
   console.log("Ask me anything about mutual funds in India.");
   console.log("Examples:");
-  console.log("  • Search for SBI Blue Chip fund");
-  console.log("  • What's the CAGR of scheme 119551 over 3 years?");
+  console.log("  • Search for Parag Parikh flexi cap fund");
+  console.log("  • Get NAV history for fund 100060");
   console.log("  • Calculate SIP of ₹5000 for 10 years at 12% return");
-  console.log("  • Compare HDFC and ICICI large cap funds");
-  console.log("  • Show NAV chart for Axis Bluechip");
+  console.log("  • Compare fund 100060 and 119551");
   console.log("━".repeat(50));
   console.log("Type 'exit' to quit.\n");
 
@@ -535,4 +601,8 @@ async function main() {
 
 export { agent, main };
 
-main().catch(console.error);
+// Only run CLI when executed directly (not when imported)
+const isMainModule = import.meta.url === `file://${process.argv[1].replace(/\\/g, '/')}`;
+if (isMainModule) {
+  main().catch(console.error);
+}

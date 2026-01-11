@@ -5,17 +5,19 @@
   "license": "ISC",
   "author": "Uditya",
   "type": "module",
-  "main": "server.js",
+  "main": "api/index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "dev": "node agent.js",
-    "start": "node server.js",
-    "server": "node server.js --watch"
+    "dev": "node api/index.js",
+    "start": "node api/index.js",
+    "cli": "node agent.js"
   },
   "dependencies": {
     "@ai-sdk/google": "^2.0.44",
     "@openai/agents": "^0.3.3",
     "@openai/agents-extensions": "^0.3.3",
+    "axios": "^1.13.2",
+    "cheerio": "^1.1.2",
     "dotenv": "^17.2.3",
     "express": "^4.22.1",
     "mathjs": "^15.1.0",
