@@ -17,21 +17,21 @@ const math = create(all);
 // Create a Gemini model instance using the AI SDK adapter
 // const model = aisdk(google("gemini-2.5-flash"));
 
-const groqClient = new OpenAI({
-  baseURL: "https://api.groq.com/openai/v1",
-  apiKey: process.env.GROQ_API_KEY,
-});
+// const groqClient = new OpenAI({
+//   baseURL: "https://api.groq.com/openai/v1",
+//   apiKey: process.env.GROQ_API_KEY,
+// });
 
-// Set Groq as the default OpenAI client
-setDefaultOpenAIClient(groqClient);
+// // Set Groq as the default OpenAI client
+// setDefaultOpenAIClient(groqClient);
 
-// Define the model to use
-const model = "openai/gpt-oss-120b";
+// // Define the model to use
+// const model = "openai/gpt-oss-120b";
 
 // Input Guardrail Agent - Checks if query is related to mutual funds/investing
 const inputGuardAgent = new Agent({
   name: "Mutual Fund Query Validator",
-  model: model,
+  // model: model,
   instructions: `You are a query validator. Your ONLY job is to determine if the user's query is related to:
 - Mutual funds (searching, analyzing, comparing, NAV, returns, SIP, etc.)
 - Investing and finance (stocks, bonds, portfolio, returns, CAGR, etc.)
@@ -252,20 +252,20 @@ const getMutualFundDetails = tool({
 const getNavHistory = tool({
   name: "get_nav_history",
   description:
-    "Get NAV history for a mutual fund. Returns historical NAV data with fund performance. Use interval parameter to control data granularity (1 for daily, 30 for monthly).",
+    "Get NAV history for a mutual fund. Returns historical NAV data with fund performance. Use interval parameter to control data granularity (1 for daily, 30 for monthly). Default navPeriod is '5Y', default interval is 1, default investedAmount is 1000.",
   parameters: z.object({
     fundId: z.string().describe("The fund ID (e.g., '100060')"),
     navPeriod: z
       .string()
-      .optional()
+      .default("5Y")
       .describe("Period for NAV history: '1M', '3M', '6M', '1Y', '3Y', '5Y' (default: '5Y')"),
     interval: z
       .number()
-      .optional()
+      .default(1)
       .describe("Interval in days between data points: 1 for daily data, 30 for monthly data (default: 1)"),
     investedAmount: z
       .number()
-      .optional()
+      .default(1000)
       .describe("Investment amount for calculation (default: 1000)"),
   }),
   async execute({ fundId, navPeriod, interval, investedAmount }) {
@@ -287,16 +287,16 @@ const getNavHistory = tool({
 const getCategoryReturns = tool({
   name: "get_category_returns",
   description:
-    "Get category returns comparison for a mutual fund. Compare the fund's performance against its category average. Use interval parameter to control data granularity.",
+    "Get category returns comparison for a mutual fund. Compare the fund's performance against its category average. Use interval parameter to control data granularity. Default navPeriod is '5Y', default interval is 30.",
   parameters: z.object({
     fundId: z.string().describe("The fund ID (e.g., '100060')"),
     navPeriod: z
       .string()
-      .optional()
+      .default("5Y")
       .describe("Period for comparison: '1M', '3M', '6M', '1Y', '3Y', '5Y' (default: '5Y')"),
     interval: z
       .number()
-      .optional()
+      .default(30)
       .describe("Interval in days between data points: 1 for daily data, 30 for monthly data (default: 30)"),
   }),
   async execute({ fundId, navPeriod, interval }) {
@@ -322,21 +322,16 @@ const calculateExpression = tool({
 - Constants: pi, e
 - Functions: log(), exp(), sin(), cos(), pow(), etc.
 
-Pass the expression as a string and optionally provide variables as an object.`,
+Include all values directly in the expression string. For example: '((94.14 / 86.99) ^ (1/1) - 1) * 100' for CAGR calculation.`,
   parameters: z.object({
     expression: z
       .string()
-      .describe("Mathematical expression to evaluate"),
-    variables: z
-      .record(z.union([z.number(), z.array(z.number())]))
-      .optional()
-      .describe("Optional variables object, e.g., {principal: 10000, rate: 12, years: 5}"),
+      .describe("Mathematical expression to evaluate with all values included directly"),
   }),
-  async execute({ expression, variables = {} }) {
+  async execute({ expression }) {
     console.log("🔨 Calling Calculate Expression tool");
     try {
-      const scope = { ...variables };
-      const result = math.evaluate(expression, scope);
+      const result = math.evaluate(expression);
 
       let formattedResult;
       if (typeof result === "number") {
@@ -351,7 +346,6 @@ Pass the expression as a string and optionally provide variables as an object.`,
 
       return JSON.stringify({
         expression: expression,
-        variables: variables,
         result: formattedResult,
       });
     } catch (error) {
@@ -478,7 +472,7 @@ const compareMutualFunds = tool({
 // Create the Financial AI Agent
 const agent = new Agent({
   name: "Mutual Fund Advisor",
-  model: model,
+  // model: model,
   instructions: `
 You are an expert mutual fund advisor and financial analyst AI agent for Indian mutual funds.
 
