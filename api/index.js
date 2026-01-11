@@ -151,4 +151,5 @@ app.listen(PORT, () => {
   console.log(`  - Chat API: POST http://localhost:${PORT}/api/chat`);
   console.log(`  - Search: http://localhost:${PORT}/api/mutual-fund/search?query=parag`);
   console.log(`  - Fund Data: http://localhost:${PORT}/api/mutual-fund?fund=parag-parikh-flexi-cap-direct-growth-100060`);
+  console.log(`  - Nav History Data: http://localhost:${PORT}/api/mutual-fund/parag-parikh-flexi-cap-direct-growth-100060/nav-history`);
 });

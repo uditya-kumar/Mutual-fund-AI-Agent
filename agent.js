@@ -1,10 +1,11 @@
 import { google } from "@ai-sdk/google";
-import { Agent, run } from "@openai/agents";
+import { Agent, run, setDefaultOpenAIClient } from "@openai/agents";
 import { aisdk } from "@openai/agents-extensions";
 import { tool } from "@openai/agents";
 import { z } from "zod";
 import { create, all } from "mathjs";
 import "dotenv/config";
+import OpenAI from "openai";
 
 // Import the existing API services
 import { upstoxService } from "./api/services/upstox.service.js";
@@ -14,7 +15,18 @@ import { buildFundUrl } from "./api/routes/mutualFund.routes.js";
 const math = create(all);
 
 // Create a Gemini model instance using the AI SDK adapter
-const model = aisdk(google("gemini-2.5-flash"));
+// const model = aisdk(google("gemini-2.5-flash"));
+
+const groqClient = new OpenAI({
+  baseURL: "https://api.groq.com/openai/v1",
+  apiKey: process.env.GROQ_API_KEY,
+});
+
+// Set Groq as the default OpenAI client
+setDefaultOpenAIClient(groqClient);
+
+// Define the model to use
+const model = "openai/gpt-oss-120b";
 
 // Input Guardrail Agent - Checks if query is related to mutual funds/investing
 const inputGuardAgent = new Agent({
@@ -110,43 +122,6 @@ function extractFundSlug(item) {
   }
   
   return null;
-}
-
-// Helper function to extract fund ID (schemeCode) from search result
-function extractFundId(item) {
-  // New format from /api/search-funds
-  if (item.schemeCode) return item.schemeCode;
-  
-  if (item.asset_key) return item.asset_key;
-  if (item.id) return item.id;
-  if (item.attributes?.instrumentKey) return item.attributes.instrumentKey;
-  if (item.instrumentKey) return item.instrumentKey;
-  return null;
-}
-
-// Helper function to extract fund name (schemeName) from search result
-function extractFundName(item) {
-  // New format from /api/search-funds
-  if (item.schemeName) return item.schemeName;
-  
-  if (item.name) return item.name;
-  if (item.display_name) return item.display_name;
-  if (item.attributes?.name) return item.attributes.name;
-  if (item.attributes?.shortName) return item.attributes.shortName;
-  return 'Unknown Fund';
-}
-
-// Helper function to check if item is a mutual fund
-function isMutualFund(item) {
-  // New format check
-  if (item.segment === "MF") return true;
-  
-  if (item.segment === "MUTUAL_FUND") return true;
-  if (item.product_type === "MUTUAL_FUND") return true;
-  if (item.type === "MUTUAL_FUND") return true;
-  if (item.attributes?.segment === "MF") return true;
-  if (item.attributes?.exchange === "MF") return true;
-  return false;
 }
 
 // Tool: Search for mutual funds using upstoxService
@@ -277,23 +252,28 @@ const getMutualFundDetails = tool({
 const getNavHistory = tool({
   name: "get_nav_history",
   description:
-    "Get NAV history for a mutual fund. Returns historical NAV data with fund performance.",
+    "Get NAV history for a mutual fund. Returns historical NAV data with fund performance. Use interval parameter to control data granularity (1 for daily, 30 for monthly).",
   parameters: z.object({
     fundId: z.string().describe("The fund ID (e.g., '100060')"),
     navPeriod: z
       .string()
       .optional()
       .describe("Period for NAV history: '1M', '3M', '6M', '1Y', '3Y', '5Y' (default: '5Y')"),
+    interval: z
+      .number()
+      .optional()
+      .describe("Interval in days between data points: 1 for daily data, 30 for monthly data (default: 1)"),
     investedAmount: z
       .number()
       .optional()
       .describe("Investment amount for calculation (default: 1000)"),
   }),
-  async execute({ fundId, navPeriod, investedAmount }) {
+  async execute({ fundId, navPeriod, interval, investedAmount }) {
     console.log("🔨 Calling Get NAV History tool");
     try {
       const data = await upstoxService.getNavHistory(fundId, {
         navPeriod,
+        interval,
         investedAmount,
       });
       return JSON.stringify(data);
@@ -307,18 +287,22 @@ const getNavHistory = tool({
 const getCategoryReturns = tool({
   name: "get_category_returns",
   description:
-    "Get category returns comparison for a mutual fund. Compare the fund's performance against its category average.",
+    "Get category returns comparison for a mutual fund. Compare the fund's performance against its category average. Use interval parameter to control data granularity.",
   parameters: z.object({
     fundId: z.string().describe("The fund ID (e.g., '100060')"),
     navPeriod: z
       .string()
       .optional()
       .describe("Period for comparison: '1M', '3M', '6M', '1Y', '3Y', '5Y' (default: '5Y')"),
+    interval: z
+      .number()
+      .optional()
+      .describe("Interval in days between data points: 1 for daily data, 30 for monthly data (default: 30)"),
   }),
-  async execute({ fundId, navPeriod }) {
+  async execute({ fundId, navPeriod, interval }) {
     console.log("🔨 Calling Get Category Returns tool");
     try {
-      const data = await upstoxService.getCategoryReturns(fundId, { navPeriod });
+      const data = await upstoxService.getCategoryReturns(fundId, { navPeriod, interval });
       return JSON.stringify(data);
     } catch (error) {
       return JSON.stringify({ error: error.message });
@@ -520,6 +504,14 @@ You are an expert mutual fund advisor and financial analyst AI agent for Indian 
 ## Using Fund IDs vs Fund Slugs:
 - **fundSlug** (e.g., "parag-parikh-flexi-cap-direct-growth-100060"): Use for get_mutual_fund_details
 - **fundId** (e.g., "100060"): Use for get_nav_history, get_category_returns, compare_mutual_funds
+
+## NAV History & Category Returns Parameters:
+- **navPeriod**: '1M', '3M', '6M', '1Y', '3Y', '5Y' - Time period for data
+- **interval**: Number of days between data points
+  - Use interval=1 for daily data (default)
+  - Use interval=30 for monthly data (one data point per month)
+  - Use interval=7 for weekly data
+- Example: For 1 year of monthly NAV data, use navPeriod='1Y' and interval=30
 
 ## Using the Calculate Tool:
 **CAGR:** \`((finalNav / initialNav) ^ (1 / years) - 1) * 100\`
