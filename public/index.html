@@ -485,14 +485,27 @@
         let autocompleteData = [];
         let selectedIndex = -1;
         let atSymbolPosition = -1;
+        let debounceTimer = null;
+        let currentSearchQuery = '';
+
+        // Debounce function for search
+        function debounce(func, delay) {
+            return function(...args) {
+                clearTimeout(debounceTimer);
+                debounceTimer = setTimeout(() => func.apply(this, args), delay);
+            };
+        }
 
         // Auto-resize textarea
         messageInput.addEventListener('input', () => {
             messageInput.style.height = 'auto';
             messageInput.style.height = messageInput.scrollHeight + 'px';
             
-            handleAutocomplete();
+            triggerAutocomplete();
         });
+
+        // Debounced autocomplete trigger (300ms delay)
+        const triggerAutocomplete = debounce(handleAutocomplete, 200);
 
         // Handle autocomplete
         async function handleAutocomplete() {
@@ -524,10 +537,23 @@
                 return;
             }
 
+            // Skip if same query already being searched
+            if (query === currentSearchQuery) {
+                return;
+            }
+            currentSearchQuery = query;
+
             try {
                 // Use local proxy to avoid CORS issues
                 const response = await fetch(`/api/search-funds?query=${encodeURIComponent(query)}`);
-                autocompleteData = await response.json();
+                const data = await response.json();
+                
+                // Only update if this is still the current query (avoid stale results)
+                if (query !== currentSearchQuery) {
+                    return;
+                }
+                
+                autocompleteData = data;
                 
                 if (autocompleteData.length > 0) {
                     renderAutocomplete();
