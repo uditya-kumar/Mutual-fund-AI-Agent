@@ -476,7 +476,6 @@
     </div>
 
     <script>
-        const API_BASE_URL = 'https://upstocks-api.onrender.com';
         const chatContainer = document.getElementById('chatContainer');
         const messageInput = document.getElementById('messageInput');
         const sendButton = document.getElementById('sendButton');
@@ -526,20 +525,9 @@
             }
 
             try {
-                const response = await fetch(`${API_BASE_URL}/api/mutual-fund/search?query=${encodeURIComponent(query)}&records=10`);
-                const result = await response.json();
-                
-                // Extract mutual funds from the API response
-                const searchList = result?.data?.searchList || [];
-                autocompleteData = searchList
-                    .filter(item => item.type === 'MF' && item.attributes)
-                    .map(item => ({
-                        schemeName: item.attributes.schemeName || item.attributes.tradingSymbol || '',
-                        schemeCode: item.attributes.instrumentKey || item.attributes.upstoxSchemeId || '',
-                        category: item.attributes.category || '',
-                        amc: item.attributes.schemeLegalName || ''
-                    }))
-                    .filter(fund => fund.schemeName && fund.schemeCode);
+                // Use local proxy to avoid CORS issues
+                const response = await fetch(`/api/search-funds?query=${encodeURIComponent(query)}`);
+                autocompleteData = await response.json();
                 
                 if (autocompleteData.length > 0) {
                     renderAutocomplete();

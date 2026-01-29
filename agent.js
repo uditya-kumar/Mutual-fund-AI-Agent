@@ -1,9 +1,13 @@
-import { Agent, run } from "@openai/agents";
-import { tool } from "@openai/agents";
+import {
+  Agent,
+  run,
+  tool,
+} from "@openai/agents";
 import { z } from "zod";
 import { create, all } from "mathjs";
 import "dotenv/config";
 import axios from "axios";
+
 
 // Base URL for the hosted API
 const API_BASE_URL = "https://upstocks-api.onrender.com";
@@ -11,24 +15,9 @@ const API_BASE_URL = "https://upstocks-api.onrender.com";
 // Initialize mathjs with all functions
 const math = create(all);
 
-// Create a Gemini model instance using the AI SDK adapter
-// const model = aisdk(google("gemini-2.5-flash"));
-
-// const groqClient = new OpenAI({
-//   baseURL: "https://api.groq.com/openai/v1",
-//   apiKey: process.env.GROQ_API_KEY,
-// });
-
-// // Set Groq as the default OpenAI client
-// setDefaultOpenAIClient(groqClient);
-
-// // Define the model to use
-// const model = "openai/gpt-oss-120b";
-
 // Input Guardrail Agent - Checks if query is related to mutual funds/investing
 const inputGuardAgent = new Agent({
   name: "Mutual Fund Query Validator",
-  // model: model,
   instructions: `You are a query validator. Your ONLY job is to determine if the user's query is related to:
 - Mutual funds (searching, analyzing, comparing, NAV, returns, SIP, etc.)
 - Investing and finance (stocks, bonds, portfolio, returns, CAGR, etc.)
@@ -452,7 +441,6 @@ const compareMutualFunds = tool({
 // Create the Financial AI Agent
 const agent = new Agent({
   name: "Mutual Fund Advisor",
-  // model: model,
   instructions: `
 You are an expert mutual fund advisor and financial analyst AI agent for Indian mutual funds.
 
@@ -517,7 +505,18 @@ Use the URL in a markdown link: [Title](url)
   inputGuardrails: [inputGuardrail],
 });
 
-// Main function to run the agent
+// Function to run chat with the agent
+async function runChat(message) {
+  console.log("🚀 Processing query:", message);
+  const result = await run(agent, message, { maxTurns: 10 });
+  console.log("✅ Query processed successfully");
+  return result.finalOutput;
+}
+
+// Export for server use
+export { agent, runChat };
+
+// Main function to run the agent (CLI mode)
 async function main() {
   const readline = await import("readline");
   const rl = readline.createInterface({
@@ -551,8 +550,8 @@ async function main() {
 
       try {
         console.log("\n🤔 Analyzing...\n");
-        const result = await run(agent, userQuery);
-        console.log("Agent:", result.finalOutput);
+        const response = await runChat(userQuery);
+        console.log("Agent:", response);
         console.log("\n" + "─".repeat(50) + "\n");
       } catch (error) {
         console.error("Error:", error.message);
@@ -564,8 +563,6 @@ async function main() {
 
   askQuestion();
 }
-
-export { agent, main };
 
 // Only run CLI when executed directly (not when imported)
 const isMainModule = import.meta.url === `file://${process.argv[1].replace(/\\/g, '/')}`;
