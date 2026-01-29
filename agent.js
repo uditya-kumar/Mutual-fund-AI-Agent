@@ -1,15 +1,12 @@
-import { google } from "@ai-sdk/google";
-import { Agent, run, setDefaultOpenAIClient } from "@openai/agents";
-import { aisdk } from "@openai/agents-extensions";
+import { Agent, run } from "@openai/agents";
 import { tool } from "@openai/agents";
 import { z } from "zod";
 import { create, all } from "mathjs";
 import "dotenv/config";
-import OpenAI from "openai";
+import axios from "axios";
 
-// Import the existing API services
-import { upstoxService } from "./api/services/upstox.service.js";
-import { buildFundUrl } from "./api/routes/mutualFund.routes.js";
+// Base URL for the hosted API
+const API_BASE_URL = "https://upstocks-api.onrender.com";
 
 // Initialize mathjs with all functions
 const math = create(all);
@@ -95,40 +92,11 @@ function buildFundSlugFromSearch(schemeName, schemeCode) {
   return `${slug}-${schemeCode}`;
 }
 
-// Helper function to extract fund slug from search result
-function extractFundSlug(item) {
-  // New format from /api/search-funds: { schemeCode, schemeName, ... }
-  if (item.schemeName && item.schemeCode) {
-    return buildFundSlugFromSearch(item.schemeName, item.schemeCode);
-  }
-  
-  // Check if slug is directly available
-  if (item.slug) return item.slug;
-  
-  // Check in attributes (API format)
-  if (item.attributes) {
-    const attrs = item.attributes;
-    if (attrs.slug) return attrs.slug;
-    if (attrs.name && attrs.instrumentKey) {
-      return buildFundSlugFromSearch(attrs.name, attrs.instrumentKey);
-    }
-  }
-  
-  // Fallback: construct from name and asset_key/id
-  const name = item.name || item.display_name || '';
-  const id = item.asset_key || item.id || item.instrumentKey || '';
-  if (name && id) {
-    return buildFundSlugFromSearch(name, id);
-  }
-  
-  return null;
-}
-
-// Tool: Search for mutual funds using upstoxService
+// Tool: Search for mutual funds using hosted API
 const searchMutualFunds = tool({
   name: "search_mutual_funds",
   description:
-    "Search for mutual funds by name or keyword using the Upstox API. Returns matching funds with fund IDs and details.",
+    "Search for mutual funds by name or keyword using the API. Returns matching funds with fund IDs and details.",
   parameters: z.object({
     query: z
       .string()
@@ -137,7 +105,10 @@ const searchMutualFunds = tool({
   async execute({ query }) {
     console.log("🔨 Calling Search tool");
     try {
-      const data = await upstoxService.search({ query });
+      const response = await axios.get(`${API_BASE_URL}/api/mutual-fund/search`, {
+        params: { query }
+      });
+      const data = response.data;
       
       // Get results from data.data.searchList
       // Raw API format: { type: "SCRIP", attributes: { instrumentKey, name, segment, ... } }
@@ -211,7 +182,7 @@ const searchMutualFunds = tool({
   },
 });
 
-// Tool: Get mutual fund details using upstoxService
+// Tool: Get mutual fund details using hosted API
 const getMutualFundDetails = tool({
   name: "get_mutual_fund_details",
   description:
@@ -224,10 +195,12 @@ const getMutualFundDetails = tool({
     try {
       // Clean up the slug if needed
       const cleanSlug = fundSlug.trim().toLowerCase().replace(/\s+/g, '-');
-      const fundUrl = buildFundUrl(cleanSlug);
-      console.log(`Fetching fund data from: ${fundUrl}`);
+      console.log(`Fetching fund data for: ${cleanSlug}`);
       
-      const data = await upstoxService.getMutualFundData(fundUrl);
+      const response = await axios.get(`${API_BASE_URL}/api/mutual-fund`, {
+        params: { fund: cleanSlug }
+      });
+      const data = response.data;
       
       if (!data || Object.keys(data).length === 0) {
         return JSON.stringify({
@@ -248,7 +221,7 @@ const getMutualFundDetails = tool({
   },
 });
 
-// Tool: Get NAV history using upstoxService
+// Tool: Get NAV history using hosted API
 const getNavHistory = tool({
   name: "get_nav_history",
   description:
@@ -271,19 +244,21 @@ const getNavHistory = tool({
   async execute({ fundId, navPeriod, interval, investedAmount }) {
     console.log("🔨 Calling Get NAV History tool");
     try {
-      const data = await upstoxService.getNavHistory(fundId, {
-        navPeriod,
-        interval,
-        investedAmount,
+      const response = await axios.get(`${API_BASE_URL}/api/mutual-fund/${fundId}/nav-history`, {
+        params: {
+          navPeriod,
+          interval,
+          investedAmount,
+        }
       });
-      return JSON.stringify(data);
+      return JSON.stringify(response.data);
     } catch (error) {
       return JSON.stringify({ error: error.message });
     }
   },
 });
 
-// Tool: Get category returns comparison using upstoxService
+// Tool: Get category returns comparison using hosted API
 const getCategoryReturns = tool({
   name: "get_category_returns",
   description:
@@ -302,8 +277,10 @@ const getCategoryReturns = tool({
   async execute({ fundId, navPeriod, interval }) {
     console.log("🔨 Calling Get Category Returns tool");
     try {
-      const data = await upstoxService.getCategoryReturns(fundId, { navPeriod, interval });
-      return JSON.stringify(data);
+      const response = await axios.get(`${API_BASE_URL}/api/mutual-fund/${fundId}/category-returns`, {
+        params: { navPeriod, interval }
+      });
+      return JSON.stringify(response.data);
     } catch (error) {
       return JSON.stringify({ error: error.message });
     }
@@ -431,7 +408,7 @@ const generateChart = tool({
   },
 });
 
-// Tool: Compare multiple mutual funds using upstoxService
+// Tool: Compare multiple mutual funds using hosted API
 const compareMutualFunds = tool({
   name: "compare_mutual_funds",
   description:
@@ -448,7 +425,10 @@ const compareMutualFunds = tool({
 
       for (const fundId of fundIds) {
         try {
-          const data = await upstoxService.getCategoryReturns(fundId, { navPeriod: "5Y" });
+          const response = await axios.get(`${API_BASE_URL}/api/mutual-fund/${fundId}/category-returns`, {
+            params: { navPeriod: "5Y" }
+          });
+          const data = response.data;
           comparisons.push({
             fundId: fundId,
             fundName: data.data?.fundName || `Fund ${fundId}`,
