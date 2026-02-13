@@ -111,7 +111,7 @@ User → Express Server (SSE) → AI Agent → Tools → Response
 | **AI** | OpenAI Agents SDK with Input Guardrails |
 | **Math** | mathjs |
 | **Charts** | QuickChart.io |
-| **Data** | Upstox API (live data) |
+| **Data** | [Upstocks-API](https://github.com/uditya-kumar/Upstocks-API) (live data) |
 
 ---
 
