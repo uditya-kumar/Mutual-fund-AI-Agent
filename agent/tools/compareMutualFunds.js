@@ -1,9 +1,8 @@
 import { tool } from "@openai/agents";
 import { z } from "zod";
-import axios from "axios";
-import { API_BASE_URL } from "../config.js";
+import { fetchCategoryReturns } from "../../api/services/mutualFund.service.js";
 
-// Tool: Compare multiple mutual funds using hosted API
+// Tool: Compare multiple mutual funds using the mutual-fund API service.
 export const compareMutualFunds = tool({
   name: "compare_mutual_funds",
   description:
@@ -20,10 +19,7 @@ export const compareMutualFunds = tool({
 
       for (const fundId of fundIds) {
         try {
-          const response = await axios.get(`${API_BASE_URL}/api/mutual-fund/${fundId}/category-returns`, {
-            params: { navPeriod: "5Y" }
-          });
-          const data = response.data;
+          const data = await fetchCategoryReturns(fundId, { navPeriod: "5Y" });
           comparisons.push({
             fundId: fundId,
             fundName: data.data?.fundName || `Fund ${fundId}`,

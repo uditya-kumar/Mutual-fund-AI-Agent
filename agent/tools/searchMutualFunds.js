@@ -1,7 +1,6 @@
 import { tool } from "@openai/agents";
 import { z } from "zod";
-import axios from "axios";
-import { API_BASE_URL } from "../config.js";
+import { searchFunds } from "../../api/services/mutualFund.service.js";
 
 // Helper: convert a fund name to slug format.
 function nameToSlug(name) {
@@ -20,7 +19,7 @@ function buildFundSlugFromSearch(schemeName, schemeCode) {
   return `${slug}-${schemeCode}`;
 }
 
-// Tool: Search for mutual funds using hosted API
+// Tool: Search for mutual funds using the mutual-fund API service.
 export const searchMutualFunds = tool({
   name: "search_mutual_funds",
   description:
@@ -33,10 +32,7 @@ export const searchMutualFunds = tool({
   async execute({ query }) {
     console.log("🔨 Calling Search tool");
     try {
-      const response = await axios.get(`${API_BASE_URL}/api/mutual-fund/search`, {
-        params: { query }
-      });
-      const data = response.data;
+      const data = await searchFunds(query);
 
       // Get results from data.data.searchList
       // Raw API format: { type: "SCRIP", attributes: { instrumentKey, name, segment, ... } }

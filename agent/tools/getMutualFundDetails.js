@@ -1,9 +1,8 @@
 import { tool } from "@openai/agents";
 import { z } from "zod";
-import axios from "axios";
-import { API_BASE_URL } from "../config.js";
+import { fetchFundDetails } from "../../api/services/mutualFund.service.js";
 
-// Tool: Get mutual fund details using hosted API
+// Tool: Get mutual fund details using the mutual-fund API service.
 export const getMutualFundDetails = tool({
   name: "get_mutual_fund_details",
   description:
@@ -18,10 +17,7 @@ export const getMutualFundDetails = tool({
       const cleanSlug = fundSlug.trim().toLowerCase().replace(/\s+/g, '-');
       console.log(`Fetching fund data for: ${cleanSlug}`);
 
-      const response = await axios.get(`${API_BASE_URL}/api/mutual-fund`, {
-        params: { fund: cleanSlug }
-      });
-      const data = response.data;
+      const data = await fetchFundDetails(cleanSlug);
 
       if (!data || Object.keys(data).length === 0) {
         return JSON.stringify({

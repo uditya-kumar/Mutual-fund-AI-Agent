@@ -6,6 +6,8 @@
 
 [![Node.js](https://img.shields.io/badge/Node.js-v18+-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
 [![Express](https://img.shields.io/badge/Express-4.22.1-000000?logo=express&logoColor=white)](https://expressjs.com/)
+[![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=white)](https://react.dev/)
+[![Vite](https://img.shields.io/badge/Vite-5-646CFF?logo=vite&logoColor=white)](https://vite.dev/)
 [![OpenAI Agents SDK](https://img.shields.io/badge/OpenAI-Agents%20SDK-412991?logo=openai&logoColor=white)](https://github.com/openai/openai-agents-js)
 [![License](https://img.shields.io/badge/License-ISC-blue.svg)](LICENSE)
 
@@ -17,7 +19,7 @@
 
 ## Overview
 
-An intelligent chat-based platform for analyzing Indian mutual funds using the OpenAI Agents SDK. Get real-time insights, performance calculations, and interactive visualizations through natural language queries powered by the Upstox API.
+An intelligent chat-based platform for analyzing Indian mutual funds using the OpenAI Agents SDK. Get real-time insights, performance calculations, and interactive charts through natural language queries, powered by the Upstox API.
 
 **Key Features**: Instant search • CAGR calculations • SIP projections • Interactive charts • Smart AI responses • Input guardrails
 
@@ -29,15 +31,19 @@ An intelligent chat-based platform for analyzing Indian mutual funds using the O
 |---------|-------------|
 | **Smart Search** | Type `@` for instant autocomplete via Upstox API |
 | **Analytics** | CAGR, returns, SIP calculations, category comparisons |
-| **Charts** | Interactive QuickChart visualizations (line, bar, pie, doughnut, radar) |
+| **Interactive Charts** | Recharts visualizations (line, area, bar, pie) rendered in the browser |
 | **AI Powered** | Natural language queries via OpenAI Agents SDK |
 | **Input Guardrails** | Validates queries to ensure they're finance-related |
-| **Real-time** | Server-Sent Events (SSE) for streaming responses |
-| **Modern UI** | Clean dark theme with real-time status updates |
+| **Real-time** | Server-Sent Events (SSE) for streaming status + response |
+| **Modern UI** | React + TypeScript chat interface with light/dark themes |
 
 ---
 
 ## Quick Start
+
+### Requirements
+
+Node.js v18+ and an OpenAI API key from [platform.openai.com](https://platform.openai.com/).
 
 ### Installation
 
@@ -46,21 +52,39 @@ An intelligent chat-based platform for analyzing Indian mutual funds using the O
 git clone https://github.com/uditya2004/Mutual-fund-AI-Agent.git
 cd Mutual-fund-AI-Agent
 
-# Install dependencies
+# Install backend dependencies
 npm install
 
-# Create .env file with your OpenAI API key
+# Create .env with your OpenAI API key
 echo "OPENAI_API_KEY=your_api_key" > .env
-
-# Start web interface
-npm start
-# Open http://localhost:3000
-
-# Or use CLI interface
-npm run cli
 ```
 
-**Requirements**: Node.js v18+, OpenAI API key from [platform.openai.com](https://platform.openai.com/)
+### Development
+
+The frontend and backend are separate npm projects. During development, run **both**: the Vite dev server hosts the UI with hot reload and proxies `/api/*` calls to the Express backend.
+
+```bash
+# Terminal 1 — backend (Express, http://localhost:3000)
+npm run server
+
+# Terminal 2 — frontend (Vite, http://localhost:5173)
+npm run dev
+```
+
+Open http://localhost:5173.
+
+### Production build
+
+```bash
+# Build the React frontend into frontend/dist
+npm run build
+
+# Serve the built UI + API from Express
+npm run server
+# Open http://localhost:3000
+```
+
+The Express server serves `frontend/dist` when it exists, so `npm run build` must run before deploying.
 
 ---
 
@@ -75,90 +99,98 @@ Get details for fund 100060              # Get fund information
 Calculate 5-year CAGR for @HDFC Top 100  # Performance analysis
 SIP of ₹10,000 for 20 years at 12%       # Investment planning
 Compare fund 100060 and 119551           # Fund comparison
-Show NAV chart for @Parag Parikh Flexi   # Visualizations
+Show NAV chart for @Parag Parikh Flexi   # Interactive chart
 Get category returns for fund 100060     # Category comparison
 ```
-
-### Status Indicators
-
-| Status | Meaning |
-|--------|---------|
-| Thinking | AI processing query |
-| Tool Call | Executing tool |
-| Chart | Generating visualization |
 
 ---
 
 ## Architecture
 
 ```
-User → Express Server (SSE) → AI Agent → Tools → Response
-           ↓                      ↓
-       /api/chat              Input Guardrail
-       /api/search-funds      (Query Validation)
-           ↓                      ↓
-    Upstox API Proxy         7 Tools: Search, Details,
-                             NAV History, Category Returns,
-                             Calculate, Chart, Compare
+Browser (React + Vite)
+  │  /api/chat (SSE), /api/search-funds
+  ▼
+Express (api/server.js)
+  ├─ api/routes/*.route.js        one file per route
+  ▼
+Agent (agent/agent.js)
+  ├─ Input Guardrail              rejects non-finance queries
+  └─ 7 tools (agent/tools/*.js)   Upstox API + mathjs + chart spec
 ```
+
+### How it works
+
+1. The React UI posts a message to `/api/chat` and reads an **SSE** stream of frames (`status`, `message`, `error`, `done`).
+2. The backend runs the OpenAI agent. An **input guardrail** first validates the query is finance-related; off-topic queries trip a wire and are rejected.
+3. The agent calls tools as needed and returns a single markdown reply.
+4. **Charts are interactive, not images.** The `generate_chart` tool returns a JSON chart spec; the agent embeds it verbatim in a ` ```chart ` fenced code block. The frontend parses the message into markdown + chart segments and renders charts with **Recharts** (which re-theme on light/dark toggle).
 
 ### Tech Stack
 
 | Layer | Technology |
 |-------|------------|
 | **Backend** | Express.js, OpenAI Agents SDK, Axios |
-| **Frontend** | Vanilla JS (`public/index.html`) |
-| **AI** | OpenAI Agents SDK with Input Guardrails |
+| **Frontend** | React 18, TypeScript, Vite |
+| **AI** | OpenAI Agents SDK with input guardrails |
 | **Math** | mathjs |
-| **Charts** | QuickChart.io |
-| **Data** | [Upstocks-API](https://github.com/uditya-kumar/Upstocks-API) (live data) |
+| **Charts** | Recharts |
+| **Markdown** | marked + DOMPurify |
+| **Data** | [Upstox API](https://github.com/uditya2004/Upstocks-API) proxy (live data) |
 
 ---
 
 ## Core Tools
 
-| # | Tool | Description |
-|---|------|-------------|
-| 1 | `search_mutual_funds` | Search funds by name/keyword via Upstox API |
-| 2 | `get_mutual_fund_details` | Get current NAV, returns & fund metadata |
-| 3 | `get_nav_history` | Historical NAV data with configurable intervals |
-| 4 | `get_category_returns` | Compare fund performance vs category average |
-| 5 | `calculate` | Math expressions (CAGR, SIP, statistics) via mathjs |
-| 6 | `generate_chart` | Interactive visualizations via QuickChart.io |
-| 7 | `compare_mutual_funds` | Multi-fund performance comparison |
+Each tool lives in its own file under `agent/tools/` and is registered in `agent/agent.js`.
+
+| Tool | Description |
+|------|-------------|
+| `search_mutual_funds` | Search funds by name/keyword via Upstox API |
+| `get_mutual_fund_details` | Current NAV, returns & fund metadata (by fund slug) |
+| `get_nav_history` | Historical NAV data with configurable period/interval |
+| `get_category_returns` | Fund performance vs category average |
+| `calculate` | Math expressions (CAGR, SIP, statistics) via mathjs |
+| `generate_chart` | Returns a Recharts chart spec (line/area/bar/pie) |
+| `compare_mutual_funds` | Multi-fund performance comparison |
 
 ---
 
 ## Project Structure
 
-| File/Folder | Description |
-|-------------|-------------|
-| `agent.js` | AI agent + tool definitions + guardrails |
-| `server.js` | Express API server with SSE |
-| `public/index.html` | Chat interface |
-| `package.json` | Dependencies |
-| `vercel.json` | Vercel deployment config |
-| `.env` | Environment variables (`OPENAI_API_KEY`) |
+```
+agent/                    AI agent (OpenAI Agents SDK)
+  agent.js                connects guardrail + agent + tools; exports runChat()
+  config.js               shared API_BASE_URL
+  tools/                  one file per tool
+api/                      Express backend
+  server.js               entry point: serves frontend + mounts routes
+  routes/                 one file per route (chat, health, search-funds)
+frontend/                 React + Vite + TypeScript
+  src/
+    App.tsx               chat state + SSE handling
+    components/            Message, Chart, ChatInput, StatusMessage
+    lib/                   api (SSE), markdown (parse + chart blocks), chartColors
+    hooks/useTheme.ts      light/dark theme
+vercel.json               deployment config (routes all traffic to api/server.js)
+.env                      OPENAI_API_KEY
+```
 
 ---
 
-## Example Queries
+## API Endpoints
 
-| Type | Example Query |
-|------|---------------|
-| **Search** | `@SBI Blue Chip` or `Search for HDFC equity funds` |
-| **Details** | `Get details for parag-parikh-flexi-cap-direct-growth-100060` |
-| **NAV History** | `Get NAV history for fund 100060 for 1 year with monthly interval` |
-| **Analysis** | `Calculate CAGR: ((94.14 / 86.99) ^ (1/1) - 1) * 100` |
-| **Planning** | `SIP of ₹10,000 monthly for 20 years at 12% return` |
-| **Comparison** | `Compare fund 100060 and 119551` |
-| **Charts** | `Show NAV trend for fund 100060` |
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/chat` | POST | Chat with the AI agent (SSE stream) |
+| `/api/search-funds` | GET | Fund search autocomplete (Upstox proxy) |
+| `/api/health` | GET | Health check |
 
 ---
 
 ## Input Guardrails
 
-The agent includes an input guardrail that validates queries. Only finance-related topics are allowed:
+The agent validates every query before processing. Only finance-related topics are allowed:
 
 | Category | Examples |
 |----------|----------|
@@ -167,18 +199,7 @@ The agent includes an input guardrail that validates queries. Only finance-relat
 | **Financial Calculations** | SIP calculator, projections, compound interest |
 | **Indian Markets** | NSE, BSE, SEBI regulations, Indian fund houses |
 
-> **Note:** Off-topic queries are politely rejected with an explanation.
-
----
-
-## API Endpoints
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/` | GET | Serve chat interface |
-| `/api/chat` | POST | Chat with AI agent (SSE) |
-| `/api/search-funds` | GET | Search funds autocomplete |
-| `/api/health` | GET | Health check |
+> Off-topic queries are politely rejected with an explanation.
 
 ---
 
@@ -191,6 +212,9 @@ git checkout -b feature/your-feature
 git commit -m 'Add feature'
 git push origin feature/your-feature
 ```
+
+- **New tool:** add `agent/tools/<name>.js` and register it in `agent/agent.js`.
+- **New route:** add `api/routes/<name>.route.js` and mount it in `api/server.js`.
 
 ---
 

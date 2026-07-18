@@ -1,9 +1,8 @@
 import { tool } from "@openai/agents";
 import { z } from "zod";
-import axios from "axios";
-import { API_BASE_URL } from "../config.js";
+import { fetchCategoryReturns } from "../../api/services/mutualFund.service.js";
 
-// Tool: Get category returns comparison using hosted API
+// Tool: Get category returns comparison using the mutual-fund API service.
 export const getCategoryReturns = tool({
   name: "get_category_returns",
   description:
@@ -22,10 +21,8 @@ export const getCategoryReturns = tool({
   async execute({ fundId, navPeriod, interval }) {
     console.log("🔨 Calling Get Category Returns tool");
     try {
-      const response = await axios.get(`${API_BASE_URL}/api/mutual-fund/${fundId}/category-returns`, {
-        params: { navPeriod, interval }
-      });
-      return JSON.stringify(response.data);
+      const data = await fetchCategoryReturns(fundId, { navPeriod, interval });
+      return JSON.stringify(data);
     } catch (error) {
       return JSON.stringify({ error: error.message });
     }

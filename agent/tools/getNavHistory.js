@@ -1,9 +1,8 @@
 import { tool } from "@openai/agents";
 import { z } from "zod";
-import axios from "axios";
-import { API_BASE_URL } from "../config.js";
+import { fetchNavHistory } from "../../api/services/mutualFund.service.js";
 
-// Tool: Get NAV history using hosted API
+// Tool: Get NAV history using the mutual-fund API service.
 export const getNavHistory = tool({
   name: "get_nav_history",
   description:
@@ -26,14 +25,8 @@ export const getNavHistory = tool({
   async execute({ fundId, navPeriod, interval, investedAmount }) {
     console.log("🔨 Calling Get NAV History tool");
     try {
-      const response = await axios.get(`${API_BASE_URL}/api/mutual-fund/${fundId}/nav-history`, {
-        params: {
-          navPeriod,
-          interval,
-          investedAmount,
-        }
-      });
-      return JSON.stringify(response.data);
+      const data = await fetchNavHistory(fundId, { navPeriod, interval, investedAmount });
+      return JSON.stringify(data);
     } catch (error) {
       return JSON.stringify({ error: error.message });
     }
