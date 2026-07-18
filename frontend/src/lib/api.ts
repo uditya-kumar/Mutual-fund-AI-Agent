@@ -1,7 +1,7 @@
 import type { Fund } from "../types";
 
-/** Search mutual funds via the backend proxy. */
-export async function searchFunds(query: string): Promise<Fund[]> {
+/** Fetch fund autocomplete suggestions via the backend proxy. */
+export async function fetchFundSuggestions(query: string): Promise<Fund[]> {
   const response = await fetch(
     `/api/search-funds?query=${encodeURIComponent(query)}`
   );

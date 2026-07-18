@@ -5,7 +5,7 @@ import {
   type KeyboardEvent,
 } from "react";
 import type { Fund } from "../types";
-import { searchFunds } from "../lib/api";
+import { fetchFundSuggestions } from "../lib/api";
 
 interface ChatInputProps {
   disabled: boolean;
@@ -85,7 +85,7 @@ export function ChatInput({ disabled, onSend }: ChatInputProps) {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(async () => {
       try {
-        const funds = await searchFunds(query);
+        const funds = await fetchFundSuggestions(query);
         // Ignore stale results if the query moved on.
         if (query !== currentQueryRef.current) return;
         setResults(funds);
