@@ -2,7 +2,7 @@ import express from "express";
 import path from "path";
 import { fileURLToPath } from "url";
 import axios from "axios";
-import { runChat } from "./agent.js";
+import { runChat } from "./agent/index.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -11,13 +11,16 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const API_BASE_URL = "https://upstocks-api.onrender.com";
 
+// Serve the built React frontend (run `npm run build` to produce it).
+const staticDir = path.join(__dirname, "frontend", "dist");
+
 // Middleware
 app.use(express.json());
-app.use(express.static(path.join(__dirname, "public")));
+app.use(express.static(staticDir));
 
 // Serve index.html
 app.get("/", (req, res) => {
-  res.sendFile(path.join(__dirname, "public", "index.html"));
+  res.sendFile(path.join(staticDir, "index.html"));
 });
 
 // Chat endpoint
