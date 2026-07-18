@@ -18,9 +18,7 @@ const nextId = () => `msg-${idCounter++}`;
 
 export default function App() {
   const { theme, toggleTheme } = useTheme();
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    { id: nextId(), role: "agent", content: WELCOME_TEXT },
-  ]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [status, setStatus] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
 
@@ -95,9 +93,16 @@ export default function App() {
 
       <div className="chat-scroll" ref={chatRef}>
         <div className="chat-column">
-          {messages.map((message) => (
-            <Message key={message.id} message={message} theme={theme} />
-          ))}
+          {messages.length === 0 ? (
+            <Message
+              message={{ id: "welcome", role: "agent", content: WELCOME_TEXT }}
+              theme={theme}
+            />
+          ) : (
+            messages.map((message) => (
+              <Message key={message.id} message={message} theme={theme} />
+            ))
+          )}
           {status && <StatusMessage text={status} />}
         </div>
       </div>
