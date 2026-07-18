@@ -82,8 +82,10 @@ app.get("/api/search-funds", async (req, res) => {
   }
 
   try {
+    // Upstream returns stocks (SCRIP) before mutual funds, so request a larger
+    // batch to ensure MF results are included, then trim to 10 after filtering.
     const response = await axios.get(`${API_BASE_URL}/api/mutual-fund/search`, {
-      params: { query, records: 10 }
+      params: { query, records: 50 }
     });
 
     const searchList = response.data?.data?.searchList || [];
@@ -94,7 +96,8 @@ app.get("/api/search-funds", async (req, res) => {
         schemeCode: item.attributes.instrumentKey || item.attributes.upstoxSchemeId || "",
         category: item.attributes.category || ""
       }))
-      .filter(fund => fund.schemeName && fund.schemeCode);
+      .filter(fund => fund.schemeName && fund.schemeCode)
+      .slice(0, 10);
 
     res.json(funds);
   } catch (error) {
