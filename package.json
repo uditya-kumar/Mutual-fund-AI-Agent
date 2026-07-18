@@ -5,14 +5,13 @@
   "license": "ISC",
   "author": "Uditya",
   "type": "module",
-  "main": "server.js",
+  "main": "api/server.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "npm --prefix frontend run dev",
-    "server": "node server.js",
-    "start": "node server.js",
-    "build": "npm --prefix frontend install && npm --prefix frontend run build",
-    "cli": "node agent/index.js"
+    "server": "node api/server.js",
+    "start": "node api/server.js",
+    "build": "npm --prefix frontend install && npm --prefix frontend run build"
   },
   "dependencies": {
     "@openai/agents": "^0.3.3",

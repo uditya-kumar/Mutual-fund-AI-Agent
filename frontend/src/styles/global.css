@@ -282,12 +282,26 @@ body {
   color: var(--accent-hover);
 }
 
-.chart-container {
+/* Interactive Recharts figure inside an agent message. */
+.chart-figure {
   margin: 16px 0;
   background: var(--bg-code);
   border: 1px solid var(--border-color);
-  border-radius: 8px;
-  padding: 16px;
+  border-radius: 12px;
+  padding: 16px 12px 12px;
+}
+
+.chart-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-strong);
+  margin: 0 0 12px 6px;
+}
+
+/* Recharts injects inline focus outlines on the SVG wrapper — suppress them. */
+.chart-figure .recharts-wrapper:focus,
+.chart-figure svg:focus {
+  outline: none;
 }
 
 /* Status indicator (thinking / working) */

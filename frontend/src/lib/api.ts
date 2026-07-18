@@ -11,7 +11,6 @@ export async function searchFunds(query: string): Promise<Fund[]> {
 
 export type ChatEvent =
   | { type: "status"; status: string; tool?: string }
-  | { type: "chart"; url: string }
   | { type: "message"; content: string }
   | { type: "done" }
   | { type: "error"; error: string };

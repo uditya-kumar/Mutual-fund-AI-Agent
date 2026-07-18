@@ -1,74 +1,70 @@
 import { tool } from "@openai/agents";
 import { z } from "zod";
 
-// Tool: Generate charts using QuickChart.io API
+// Tool: Build a structured chart specification.
+//
+// This no longer renders an image. It returns a Recharts-ready spec that the
+// frontend renders as an interactive chart. The agent chooses the chart type
+// and must echo the returned JSON verbatim inside a ```chart fenced code block
+// so the UI can pick it up (see agent instructions).
 export const generateChart = tool({
   name: "generate_chart",
   description:
-    "Generate visual charts for mutual fund data using QuickChart. Returns a short chart URL.",
+    "Build an interactive chart from data. Returns a JSON chart specification (NOT an image) that the frontend renders with Recharts. Choose the chartType that best fits the data: 'line' for trends over time (e.g. NAV history), 'area' for cumulative growth, 'bar' for comparing discrete values across funds/periods, 'pie' for composition/allocation. After calling this tool, output the returned JSON EXACTLY as-is inside a ```chart fenced code block.",
   parameters: z.object({
     chartType: z
-      .string()
-      .describe("Type of chart: line, bar, pie, doughnut, radar"),
+      .enum(["line", "area", "bar", "pie"])
+      .describe("The chart type that best fits the data"),
     title: z.string().describe("Chart title"),
     labels: z
       .array(z.string())
-      .describe("Labels for the data points"),
+      .describe(
+        "X-axis category labels, one per data point (e.g. dates or periods). For a pie chart these are the slice names."
+      ),
     datasets: z
       .array(
         z.object({
-          label: z.string().describe("Dataset label"),
-          data: z.array(z.number()).describe("Data values"),
+          label: z.string().describe("Series name (shown in legend/tooltip)"),
+          data: z
+            .array(z.number())
+            .describe("Numeric values aligned with `labels`"),
         })
       )
-      .describe("Datasets to plot"),
+      .describe(
+        "One or more data series. For a pie chart, provide a single series."
+      ),
   }),
   async execute({ chartType, title, labels, datasets }) {
     console.log("🔨 Calling Generate Chart tool");
     try {
-      const chartConfig = {
-        type: chartType,
-        data: {
-          labels: labels,
-          datasets: datasets.map((ds, index) => ({
-            label: ds.label,
-            data: ds.data,
-            borderColor: `hsl(${index * 60}, 70%, 50%)`,
-            backgroundColor: `hsla(${index * 60}, 70%, 50%, 0.2)`,
-            fill: chartType === "line" ? true : undefined,
-            tension: chartType === "line" ? 0.4 : undefined,
-          })),
-        },
-        options: {
-          responsive: true,
-          plugins: {
-            title: { display: true, text: title, font: { size: 16 }, color: "#e8e8e8" },
-            legend: { display: true, position: "bottom", labels: { color: "#e8e8e8" } },
-          },
-          scales:
-            chartType === "line" || chartType === "bar"
-              ? {
-                  y: { beginAtZero: false, ticks: { color: "#888" }, grid: { color: "#2a2a2a" } },
-                  x: { ticks: { color: "#888" }, grid: { color: "#2a2a2a" } },
-                }
-              : undefined,
-        },
-      };
+      if (!labels.length || !datasets.length) {
+        return JSON.stringify({
+          error: "Chart needs at least one label and one dataset.",
+        });
+      }
 
-      const response = await fetch("https://quickchart.io/chart/create", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ backgroundColor: "black", width: 800, height: 400, chart: chartConfig }),
+      const series = datasets.map((ds) => ds.label);
+
+      // Transform the labels + datasets into Recharts row format:
+      // one object per label, with a key for the x-axis and one key per series.
+      const data = labels.map((label, i) => {
+        const row = { name: label };
+        for (const ds of datasets) {
+          row[ds.label] = ds.data[i] ?? null;
+        }
+        return row;
       });
 
-      const result = await response.json();
+      const spec = {
+        type: "chart",
+        chartType,
+        title,
+        xKey: "name",
+        series,
+        data,
+      };
 
-      if (result.success && result.url) {
-        return JSON.stringify({ type: "CHART", url: result.url, title: title });
-      } else {
-        const chartUrl = `https://quickchart.io/chart?backgroundColor=black&c=${encodeURIComponent(JSON.stringify(chartConfig))}&w=800&h=400`;
-        return JSON.stringify({ type: "CHART", url: chartUrl, title: title });
-      }
+      return JSON.stringify(spec);
     } catch (error) {
       return JSON.stringify({ error: error.message });
     }

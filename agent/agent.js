@@ -101,9 +101,26 @@ You are an expert mutual fund advisor and financial analyst AI agent for Indian 
 **Absolute Returns:** \`((finalNav - initialNav) / initialNav) * 100\`
 **SIP Future Value:** \`P * (((1 + r)^n - 1) / r) * (1 + r)\` where r = annualRate/1200, n = years*12
 
-## Chart Generation:
-When generate_chart returns: {"type":"CHART","url":"...","title":"..."}
-Use the URL in a markdown link: [Title](url)
+## Chart Generation (interactive, rendered with Recharts):
+You decide when a chart helps and which type fits the data:
+- **line**: trends over time (e.g. NAV history)
+- **area**: cumulative growth of an investment
+- **bar**: comparing discrete values across funds or periods
+- **pie**: composition / allocation breakdown
+
+Steps:
+1. Fetch the real data first (NAV history, category returns, etc.).
+2. Call generate_chart with the chartType, title, labels, and datasets.
+3. The tool returns a JSON chart specification (it is NOT an image URL).
+4. Output that JSON EXACTLY as returned, inside a fenced code block tagged \`chart\`:
+
+\`\`\`chart
+{ ...the exact JSON from generate_chart... }
+\`\`\`
+
+The frontend detects the \`chart\` code block and renders it as an interactive
+chart. You may add explanatory text before or after the code block, but do not
+modify the JSON inside it.
 
 ## Response Guidelines:
 - Always search for a fund first before trying to get its details
@@ -136,59 +153,3 @@ async function runChat(message) {
 
 // Export for server use
 export { agent, runChat };
-
-// Main function to run the agent (CLI mode)
-async function main() {
-  const readline = await import("readline");
-  const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout,
-  });
-
-  console.log("🏦 Mutual Fund AI Agent Started!");
-  console.log("━".repeat(50));
-  console.log("Ask me anything about mutual funds in India.");
-  console.log("Examples:");
-  console.log("  • Search for Parag Parikh flexi cap fund");
-  console.log("  • Get NAV history for fund 100060");
-  console.log("  • Calculate SIP of ₹5000 for 10 years at 12% return");
-  console.log("  • Compare fund 100060 and 119551");
-  console.log("━".repeat(50));
-  console.log("Type 'exit' to quit.\n");
-
-  const askQuestion = () => {
-    rl.question("You: ", async (userQuery) => {
-      if (userQuery.toLowerCase() === "exit") {
-        console.log("\nGoodbye! Happy Investing! 💰");
-        rl.close();
-        return;
-      }
-
-      if (!userQuery.trim()) {
-        askQuestion();
-        return;
-      }
-
-      try {
-        console.log("\n🤔 Analyzing...\n");
-        const response = await runChat(userQuery);
-        console.log("Agent:", response);
-        console.log("\n" + "─".repeat(50) + "\n");
-      } catch (error) {
-        console.error("Error:", error.message);
-      }
-
-      askQuestion();
-    });
-  };
-
-  askQuestion();
-}
-
-// Only run CLI when executed directly (not when imported)
-const entry = process.argv[1];
-const isMainModule =
-  entry && import.meta.url === `file://${entry.replace(/\\/g, "/")}`;
-if (isMainModule) {
-  main().catch(console.error);
-}

@@ -1,1 +1,1 @@
-{"root":["./src/app.tsx","./src/main.tsx","./src/types.ts","./src/components/chatinput.tsx","./src/components/message.tsx","./src/components/statusmessage.tsx","./src/hooks/usetheme.ts","./src/lib/api.ts","./src/lib/markdown.ts"],"version":"5.9.3"}
+{"root":["./src/app.tsx","./src/main.tsx","./src/types.ts","./src/components/chart.tsx","./src/components/chatinput.tsx","./src/components/message.tsx","./src/components/statusmessage.tsx","./src/hooks/usetheme.ts","./src/lib/api.ts","./src/lib/chartcolors.ts","./src/lib/markdown.ts"],"version":"5.9.3"}
