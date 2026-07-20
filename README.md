@@ -220,11 +220,11 @@ git push origin feature/your-feature
 
 ## License & Author
 
-| | |
-|---|---|
-| **License** | [MIT](LICENSE) |
-| **Author** | Uditya ([@uditya2004](https://github.com/uditya2004)) |
-| **Repository** | [Mutual-fund-AI-Agent](https://github.com/uditya2004/Mutual-fund-AI-Agent) |
+**License:** [MIT](LICENSE)
+
+**Author:** Uditya ([@uditya2004](https://github.com/uditya2004))
+
+**Repository:** [Mutual-fund-AI-Agent](https://github.com/uditya2004/Mutual-fund-AI-Agent)
 
 ---
 
