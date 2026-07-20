@@ -43,7 +43,7 @@ An intelligent chat-based platform for analyzing Indian mutual funds using the O
 
 ### Requirements
 
-Node.js v18+ and an OpenAI API key from [platform.openai.com](https://platform.openai.com/).
+Node.js v18+ and an API key from any [supported AI provider](#ai-providers).
 
 ### Installation
 
@@ -55,9 +55,27 @@ cd Mutual-fund-AI-Agent
 # Install backend dependencies
 npm install
 
-# Create .env with your OpenAI API key
-echo "OPENAI_API_KEY=your_api_key" > .env
+# Create .env from the template, then fill in your provider details
+cp .env.example .env
 ```
+
+### AI Providers
+
+The agent uses an OpenAI-compatible client, so it works with any provider that exposes an OpenAI-style API. Configure it in `.env` with three variables:
+
+| Variable | Description |
+|----------|-------------|
+| `MODEL_ID` | The model to use (e.g. `gpt-4o`, `llama-3.3-70b-versatile`) |
+| `MODEL_API_KEY` | Your API key for the chosen provider |
+| `BASE_URL` | The provider's OpenAI-compatible base URL |
+
+Supported providers and their `BASE_URL`:
+
+| Provider | `BASE_URL` |
+|----------|------------|
+| **OpenAI** | `https://api.openai.com/v1` |
+| **Groq** | `https://api.groq.com/openai/v1` |
+| **OpenRouter** | `https://openrouter.ai/api/v1` |
 
 ### Development
 
@@ -173,7 +191,7 @@ frontend/                 React + Vite + TypeScript
     lib/                   api (SSE), markdown (parse + chart blocks), chartColors
     hooks/useTheme.ts      light/dark theme
 vercel.json               deployment config (routes all traffic to api/server.js)
-.env                      OPENAI_API_KEY
+.env                      MODEL_ID, MODEL_API_KEY, BASE_URL
 ```
 
 ---
