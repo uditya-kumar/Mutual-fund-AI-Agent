@@ -9,7 +9,7 @@
 [![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=white)](https://react.dev/)
 [![Vite](https://img.shields.io/badge/Vite-5-646CFF?logo=vite&logoColor=white)](https://vite.dev/)
 [![OpenAI Agents SDK](https://img.shields.io/badge/OpenAI-Agents%20SDK-412991?logo=openai&logoColor=white)](https://github.com/openai/openai-agents-js)
-[![License](https://img.shields.io/badge/License-ISC-blue.svg)](LICENSE)
+[![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 [Features](#features) • [Quick Start](#quick-start) • [Usage](#usage) • [Architecture](#architecture) • [Contributing](#contributing)
 
@@ -222,7 +222,7 @@ git push origin feature/your-feature
 
 | | |
 |---|---|
-| **License** | ISC |
+| **License** | [MIT](LICENSE) |
 | **Author** | Uditya ([@uditya2004](https://github.com/uditya2004)) |
 | **Repository** | [Mutual-fund-AI-Agent](https://github.com/uditya2004/Mutual-fund-AI-Agent) |
 

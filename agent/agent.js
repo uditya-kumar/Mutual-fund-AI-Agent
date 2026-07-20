@@ -1,7 +1,11 @@
-import { Agent, run } from "@openai/agents";
+import {
+  Agent,
+  run,
+  setTracingDisabled,
+  setDefaultOpenAIClient,
+} from "@openai/agents";
 import { z } from "zod";
 import "dotenv/config";
-
 import { searchMutualFunds } from "./tools/searchMutualFunds.js";
 import { getMutualFundDetails } from "./tools/getMutualFundDetails.js";
 import { getNavHistory } from "./tools/getNavHistory.js";
@@ -9,10 +13,25 @@ import { getCategoryReturns } from "./tools/getCategoryReturns.js";
 import { calculateExpression } from "./tools/calculateExpression.js";
 import { generateChart } from "./tools/generateChart.js";
 import { compareMutualFunds } from "./tools/compareMutualFunds.js";
+import OpenAI from "openai";
+
+// Disable OpenAI tracing to suppress the warning message
+setTracingDisabled(true);
+
+const model = process.env.MODEL_ID;
+
+export const customClient = new OpenAI({
+  // baseURL: "https://api.groq.com/openai/v1",
+  baseURL: process.env.BASE_URL,
+  apiKey: process.env.MODEL_API_KEY,
+});
+
+setDefaultOpenAIClient(customClient);
 
 // Input Guardrail Agent - Checks if query is related to mutual funds/investing
 const inputGuardAgent = new Agent({
   name: "Mutual Fund Query Validator",
+  model: model,
   instructions: `You are a query validator. Your ONLY job is to determine if the user's query is related to:
 - Mutual funds (searching, analyzing, comparing, NAV, returns, SIP, etc.)
 - Investing and finance (stocks, bonds, portfolio, returns, CAGR, etc.)
@@ -62,6 +81,7 @@ const inputGuardrail = {
 // Create the Financial AI Agent
 const agent = new Agent({
   name: "Mutual Fund Advisor",
+  model: model,
   instructions: `
 You are an expert mutual fund advisor and financial analyst AI agent for Indian mutual funds.
 
